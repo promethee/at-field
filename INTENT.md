@@ -31,7 +31,7 @@ Two mechanisms were considered and explicitly **rejected**:
 
 - **Simplicity and good defaults over exhaustive explicit configuration.** Early design leaned toward requiring explicit flags for everything (no assumed defaults) in the name of transparency. This was walked back: the tool needs a working, demo-able one-liner (`at-field audio.mp3 --theme "animals"`) that produces an acceptable result for most users most of the time. Presets (`--preset fast|balanced|best`) now carry that complexity instead of requiring users to tune individual flags.
 - **Disclosure, not gatekeeping.** Every quality/limitation signal (transcript source, model size, field thinness, obviousness score) is printed information, not a blocking confirmation. The one exception is a genuine one-time cost decision (first-time model download, `--preset best`'s size/runtime estimate) — and even there, the mechanism is a plain confirm prompt, never a "type this phrase to prove you read it" flag. That pattern was explicitly tried and rejected as bad design.
-- **Local-only for v1.** Both Whisper transcription and theme-field expansion run locally. No hosted API dependency, no per-run cost, consistent with a "free" framing.
+- **Local-only for v1.** Both Whisper transcription and theme-field expansion run locally. No hosted API dependency, no per-run cost, consistent with a "free" framing. Theme expansion uses `node-llama-cpp` (in-process, no external app/daemon — fits the "runs in a terminal, self-contained" framing better than an Ollama-style client/server split; tradeoff is a heavier native-binding install than a thin HTTP client would need).
 - **Markdown-only output for v1.** Other output formats are a later decision, not a v1 requirement.
 
 ## Non-goals (v1)

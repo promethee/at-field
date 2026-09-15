@@ -6,6 +6,7 @@ import { transcribe, isModelCached } from "./transcribe.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic } from "./report.js";
+import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
 const program = new Command();
 
@@ -20,35 +21,89 @@ program
   .option("--max-duration <minutes>", "cap in minutes, 0 = unlimited (overrides preset)")
   .option("--language <code>", "transcript language, default auto-detect")
   .action(async (audio: string, opts: Record<string, string>) => {
-    if (!opts.theme && !opts.lexic) {
-      program.error("error: one of --theme or --lexic is required");
+    if (!opts.theme) {
+      program.error("error: --theme is required (always required; --lexic only changes term sourcing)");
     }
 
-    const preset = resolvePreset((opts.preset as PresetName) ?? "fast");
+    const presetName = (opts.preset as PresetName) ?? "fast";
+    const preset = resolvePreset(presetName);
 
     const options: CliOptions = {
       audioPath: audio,
       theme: opts.theme,
       lexic: opts.lexic,
-      preset: (opts.preset as PresetName) ?? "fast",
+      preset: presetName,
       whisperModel: (opts.whisperModel as CliOptions["whisperModel"]) ?? preset.whisperModel,
       maxDuration: opts.maxDuration ? Number(opts.maxDuration) : preset.maxDuration,
       language: opts.language,
     };
 
-    // NOT IMPLEMENTED past this point — pipeline wiring only.
-    // Real flow: (1) model-cache check + confirm, (2) transcribe,
-    // (3) expand theme or load --lexic, (4) analyze, (5) render + print.
-    console.log("at-field: parsed options (pipeline not yet implemented):");
-    console.log(options);
+    // --- Confirm gates ---------------------------------------------------
 
-    void isModelCached;
-    void transcribe;
-    void expandTheme;
-    void loadLexicFile;
-    void analyze;
-    void renderMarkdown;
-    void renderTerminalGraphic;
+    // 1. Preset "best" confirm: uncapped duration + heaviest default model.
+    //    Non-blocking philosophy still applies -- this is a one-time cost
+    //    decision (see AGENTS.md), not a "prove you understand" flag.
+    if (preset.requiresUpfrontConfirm) {
+      const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
+      const proceed = await confirm(
+        `--preset best runs uncapped duration with the "${options.whisperModel}" model ` +
+          `(~${approxSize} MB if not already downloaded). This can take a long time on long audio. Continue?`,
+      );
+      if (!proceed) {
+        console.log("Aborted.");
+        process.exitCode = 0;
+        return;
+      }
+    }
+
+    // 2. Model-download confirm: only if the resolved whisper model isn't
+    //    cached yet. Applies regardless of preset.
+    const whisperCached = await isModelCached(options.whisperModel!);
+    if (!whisperCached) {
+      const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
+      const proceed = await confirm(
+        `Whisper model "${options.whisperModel}" (~${approxSize} MB) is not downloaded yet. Download now?`,
+        true,
+      );
+      if (!proceed) {
+        console.log("Aborted — no model downloaded.");
+        process.exitCode = 1;
+        return;
+      }
+    }
+
+    // --- Transcription -----------------------------------------------------
+
+    console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
+    const transcript = await transcribe(options);
+    console.log(
+      `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
+        `accuracy depends on model size and audio quality.`,
+    );
+
+    // --- Theme / lexical field ---------------------------------------------
+    // --theme is always the analysis anchor. --lexic only swaps how the
+    // field's terms are sourced (static file vs. dynamic LLM expansion).
+
+    const field = options.lexic
+      ? await loadLexicFile(options.lexic, options.theme!)
+      : await expandTheme(options.theme!);
+
+    if (field.isThin) {
+      console.log(
+        `Thin-field disclaimer: only ${field.terms.length} term(s) found for "${field.theme}" ` +
+          `(threshold: 8). Results may resemble keyword-spotting rather than a broad thematic analysis.`,
+      );
+    }
+
+    // --- Analysis + report ---------------------------------------------
+    // NOT IMPLEMENTED past this point (analyze.ts, report.ts are stubs).
+
+    const result = await analyze(transcript, field);
+    const markdown = renderMarkdown(result);
+    console.log(renderTerminalGraphic(result));
+    console.log(markdown);
+
     void PRESETS;
   });
 

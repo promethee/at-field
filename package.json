@@ -11,11 +11,13 @@
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage src/**/*.test.ts",
     "test:watch": "node --import tsx --test --watch src/**/*.test.ts"
   },
   "license": "MIT",
   "dependencies": {
     "commander": "^12.1.0",
+    "node-llama-cpp": "^3.21.1",
     "nodejs-whisper": "^0.3.1"
   },
   "devDependencies": {
