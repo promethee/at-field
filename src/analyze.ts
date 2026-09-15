@@ -1,4 +1,4 @@
-import type { AnalysisResult, LexicalFieldResult, TranscriptResult } from "./types.js";
+import type { AnalysisResult, LexicalFieldResult, SegmentHit, TranscriptResult } from "./types.js";
 
 function escapeRegExp(term: string): string {
   return term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -11,9 +11,33 @@ function countOccurrences(text: string, term: string): number {
   return (text.match(pattern) ?? []).length;
 }
 
+function hasOccurrence(text: string, term: string): boolean {
+  return new RegExp(`\\b${escapeRegExp(term)}\\b`, "i").test(text);
+}
+
+/**
+ * One entry per transcript segment that contains at least one field-term
+ * hit (theme word or any related term). Powers the timestamped log in
+ * report.ts -- bracketed by Whisper's own segment boundaries rather than
+ * an invented merge-window.
+ */
+function computeSegmentHits(transcript: TranscriptResult, field: LexicalFieldResult): SegmentHit[] {
+  const allTerms = [field.theme, ...field.terms];
+  const hits: SegmentHit[] = [];
+
+  for (const segment of transcript.segments) {
+    const hitTerms = allTerms.filter((term) => hasOccurrence(segment.text, term));
+    if (hitTerms.length > 0) {
+      hits.push({ start: segment.start, end: segment.end, terms: [...new Set(hitTerms)] });
+    }
+  }
+
+  return hits;
+}
+
 /**
  * Cross-references the lexical field against the transcript, counts term
- * matches, and computes the obviousness score.
+ * matches, computes the obviousness score, and locates per-segment hits.
  *
  * obviousnessScore = literal theme-term matches / total field matches
  * (literal theme matches + every other field term's matches combined).
@@ -51,5 +75,6 @@ export async function analyze(
     field,
     obviousnessScore,
     matches,
+    segmentHits: computeSegmentHits(transcript, field),
   };
 }
