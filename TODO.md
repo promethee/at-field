@@ -4,11 +4,11 @@ Status: pre-implementation. Repo just created. Nothing built yet.
 
 ## v1 scope — transcription pipeline
 
-- [ ] Audio input handling: accept any common format, convert to whatever Whisper needs (resample/format conversion step, likely via ffmpeg)
-- [ ] Local Whisper integration (model download, cache check, inference)
-- [ ] `--whisper-model=tiny|base|small|medium|large` flag, default via preset
-- [ ] First-run download-size confirm, skipped if model already cached
-- [ ] `--preset fast|balanced|best` — bundles whisper-model + max-duration + theme-mode defaults per the table in chat history; `best` triggers upfront size/runtime confirm
+- [x] Audio input handling: any common format, conversion delegated to `nodejs-whisper` (ffmpeg internally)
+- [x] Local Whisper integration (`nodejs-whisper`, wraps whisper.cpp) — model download, cache check, inference implemented in `src/transcribe.ts`
+- [x] `--whisper-model=tiny|base|small|medium|large` flag, default via preset (`src/cli.ts`)
+- [ ] First-run download-size confirm, skipped if model already cached — `isModelCached()` exists, not yet wired into `cli.ts`'s prompt flow
+- [x] `--preset fast|balanced|best` — bundles whisper-model + max-duration + theme-mode defaults (`src/presets.ts`)
 - [ ] Per-run transcript-quality disclaimer (all modes, always shown — not just low-trust tiers)
 - [ ] `--language` flag(s) — default auto-detect, explicit override; decide how this interacts with theme-field expansion language
 
@@ -43,11 +43,20 @@ Status: pre-implementation. Repo just created. Nothing built yet.
 - Multi-transcript / batch processing
 - Persistent project/workspace state (ThemeForge-style)
 
+## Testing
+
+- [x] Test runner: `node:test` (built-in, zero deps — chosen over vitest)
+- [x] `npm test` / `npm run test:watch` scripts
+- [x] Unit tests for `src/presets.ts` (config table correctness)
+- [x] Unit tests for `src/transcribe.ts`'s `isModelCached()` (mocked `fs`, no real downloads)
+- [ ] Tests for `theme.ts`, `analyze.ts`, `report.ts` — pending their real implementation
+- [ ] Integration test for the full CLI pipeline (once end-to-end wiring exists)
+
 ## Docs / project hygiene
 
 - [ ] README.md — needs the "what this is / isn't" framing from INTENT.md, plus a working one-liner example
 - [x] Project name: `at-field` (checked clean on npm + PyPI, no meaningful collision)
-- [ ] License decision (not yet discussed)
+- [x] License: MIT (`LICENSE` file added)
 - [ ] Demo / GitHub-page audio set — deferred by request; when picked back up, see chat history for sourcing research (Spoken Wikipedia for "obvious theme" cases, LibriVox for "hidden theme" cases, both EN/FR)
 
 ## Open decisions (not yet resolved, need a call before or during implementation)

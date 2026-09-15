@@ -1,0 +1,21 @@
+node_modules/
+dist/
+
+# Whisper model weights (large, downloaded locally per --whisper-model)
+node_modules/nodejs-whisper/cpp/whisper.cpp/models/*.bin
+
+# Editor/OS
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+npm-debug.log*
+*.log
+
+# Env
+.env
+.env.local
+
+# Test/coverage output
+coverage/
