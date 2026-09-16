@@ -27,6 +27,14 @@ Two mechanisms were considered and explicitly **rejected**:
 - **Theme-discovery mode** (suggest candidate themes with no `--theme` given): rejected for v1. This is exactly ThemeForge's core clustering feature — building it would mean competing on the ground where prior art is most mature, not on `at-field`'s actual differentiation. No evidence of user demand yet either.
 - **Subject-to-topic "promotion"** (enriching a narrow theme like "dogs" using the transcript itself, once the audio is confirmed to be about dogs): rejected as circular. A field built from the transcript to then test against the transcript is close to tautological. The actual fix for a thin field on a legitimate subject is a better theme-expansion prompt, not a promotion mechanism.
 
+## Implementation-level decisions made without explicit confirmation
+
+The obviousness-score *formula* (`literalThemeMatches / totalFieldMatches`) was designed and agreed on together. The numbers below were picked unilaterally while implementing it and were not separately confirmed — flagged here so they're visible and reviewable, not buried in code:
+
+- **Obviousness-score interpretation bands** (`src/report.ts::interpretObviousness`): ≥ 0.7 "High", ≥ 0.3 "Moderate", below "Low" — with a one-line plain-language reading attached to each band in the Markdown report. These bands shape how every report's headline result reads; worth confirming or adjusting deliberately rather than by default.
+- **Thin-field threshold** (`src/theme.ts::THIN_FIELD_THRESHOLD`): fewer than 8 terms triggers the thin-field disclaimer, on both the dynamic-expansion and `--lexic` paths.
+- **Terminal graphic sizing** (`src/report.ts`): 20-character obviousness gauge, 30-character max bar width, top-10 match cap before collapsing the rest into "... and N more". Cosmetic, lower stakes than the two above, but still undisclosed defaults.
+
 ## Design philosophy
 
 - **Simplicity and good defaults over exhaustive explicit configuration.** Early design leaned toward requiring explicit flags for everything (no assumed defaults) in the name of transparency. This was walked back: the tool needs a working, demo-able one-liner (`at-field audio.mp3 --theme "animals"`) that produces an acceptable result for most users most of the time. Presets (`--preset fast|balanced|best`) now carry that complexity instead of requiring users to tune individual flags.
