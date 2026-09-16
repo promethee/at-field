@@ -71,8 +71,41 @@ test("renderTerminalGraphic includes a percentage and a gauge", () => {
   assert.match(graphic, /█+░+|░+█+|█+/);
 });
 
+test("renderTerminalGraphic omits the bar chart when there are no matches", () => {
+  const graphic = renderTerminalGraphic(baseResult({ matches: [] }));
+  assert.doesNotMatch(graphic, /█.*\d+$/m);
+  assert.match(graphic, /Obviousness/);
+});
+
 test("renderTerminalGraphic caps bar rows at 10 and notes the remainder", () => {
   const matches = Array.from({ length: 15 }, (_, i) => ({ term: `term${i}`, count: 15 - i }));
   const graphic = renderTerminalGraphic(baseResult({ matches }));
   assert.match(graphic, /and 5 more/);
+});
+
+test("renderMarkdown uses the high-obviousness interpretation at >= 0.7", () => {
+  const md = renderMarkdown(baseResult({ obviousnessScore: 0.85 }));
+  assert.match(md, /High — the theme appears to be this audio's stated subject/);
+});
+
+test("renderMarkdown shows a no-matches message when matches is empty", () => {
+  const md = renderMarkdown(baseResult({ matches: [] }));
+  assert.match(md, /No field terms were found in the transcript\./);
+});
+
+test("renderMarkdown shows a no-occurrences message when segmentHits is empty", () => {
+  const md = renderMarkdown(baseResult({ segmentHits: [] }));
+  assert.match(md, /No timestamped occurrences found\./);
+});
+
+test("renderMarkdown shows a no-terms message when the field is empty", () => {
+  const md = renderMarkdown(baseResult({ field: { theme: "dogs", terms: [], isThin: true } }));
+  assert.match(md, /no terms — static wordlist was empty or theme expansion returned none/);
+});
+
+test("renderMarkdown formats hour-scale timestamps as HH:MM:SS", () => {
+  const md = renderMarkdown(
+    baseResult({ segmentHits: [{ start: 3723.5, end: 3730, terms: ["paw"] }] }),
+  );
+  assert.match(md, /\[01:02:03–01:02:10\]: paw/);
 });

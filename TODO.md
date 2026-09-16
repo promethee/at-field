@@ -76,10 +76,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/transcribe.test.ts` — `isModelCached()` (3) + `parseWhisperOutput()` (5) = 8 tests.
 - [x] `src/theme.test.ts` — `loadLexicFile()`, incl. theme/lexic regression test = 6 tests.
 - [x] `src/analyze.test.ts` — obviousness score, matching, segmentHits = 9 tests.
-- [x] `src/report.test.ts` — Markdown + terminal graphic rendering = 9 tests.
+- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including branch coverage for high-obviousness interpretation, empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 15 tests. `report.ts` at 100/100/100 line/branch/func coverage.
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module).
-- Current total: **35 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count).
+- Current total: **41 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.20%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 
