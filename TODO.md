@@ -34,7 +34,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] First-run download-size confirm, skipped if model already cached. File: `src/confirm.ts` + wired in `src/cli.ts`. Untested (interactive prompt, no test harness for it yet).
 - [x] `--preset fast|balanced|best` — bundles whisper-model + max-duration + theme-mode defaults. File: `src/presets.ts`. Tested: `src/presets.test.ts`. `best` triggers the upfront confirm in `cli.ts`.
 - [x] Per-run transcript-quality disclaimer, always shown. Printed in `src/cli.ts` after transcription, and also included in `report.ts`'s Markdown output. One fixed message for the only v1 source (`model`).
-- [ ] `--language` flag(s) — flag exists in `cli.ts` and is passed through to `transcribe()`, but "default auto-detect, explicit override" behavior is not verified end-to-end, and interaction with theme-expansion language (see Open decisions) is undecided.
+- [ ] `--language` flag: **behavior now decided, not yet implemented.**
+  - `--language <code>` set explicitly: detect `--theme`'s language, compare to `<code>`. Match → proceed. Clear mismatch → hard stop with an error (no `--yes` bypass — the user already stated ground truth, so a mismatch means the invocation itself is wrong). Ambiguous detection (short/ambiguous `--theme` string) → warn, don't block.
+  - `--language auto` (default): nothing to check pre-transcription (auto only tells Whisper "detect it yourself" — it does not translate anything). Run transcription first, then detect `--theme`'s language against Whisper's detected transcript language; on mismatch, stop **before writing the report** (transcription cost is already spent either way, so stopping late still prevents a misleading result) rather than silently producing a near-all-zero-matches report. See INTENT.md for the fuller reasoning and the rejected alternatives (translation, a `--theme-language` flag, confirm-gate-only).
+  - Needs a language-detection step for a short `--theme` string (pick a small local library or reuse a heuristic — not yet chosen).
 
 ## v1 scope — theme / lexical analysis
 
@@ -60,6 +63,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.ts::renderTerminalGraphic` — plain-ASCII obviousness gauge + top-10 bar chart of matches, no chart dependency. Tested: 2 cases in `src/report.test.ts`.
 - [x] `cli.ts` wired to call both and print them — confirmed via typecheck + full suite; **not yet run against real audio** (blocked on the same untestable-in-sandbox model downloads as `transcribe()`/`expandTheme()`).
 - [x] Output files written to disk. Convention: same directory as input audio, `<audio-basename>.<theme-slug>.<short-uuid>.md` + matching `.transcript.txt`. UUID suffix guarantees no collision (including same-day reruns on the same audio+theme) without a date prefix — file mtime already carries recency. File: `src/output.ts::buildOutputPaths`. `report.ts`'s Transcript section now links the real filename via `RenderOptions.transcriptFileName` instead of a generic placeholder line. Tested: 5 cases in `src/output.test.ts` + 2 cases in `report.test.ts` (real filename vs. fallback). Smoke-tested end-to-end (no Whisper needed — fed synthetic data directly) confirming files are written and the report correctly cross-references the transcript file.
+- [ ] **Implicit transcript-artifact reuse.** Before transcribing, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (same naming convention `output.ts` already produces). If found, offer to reuse it instead of re-running Whisper, with a printed disclosure ("Reusing existing transcript from `<file>` — delete it to force re-transcription"). No new flag — a side effect of the existing output convention, not a separate feature surface. Directly removes the real cost of the `--language auto` mismatch-stop above (retry becomes free once a transcript already exists for that audio+theme), and is generally useful for iterating on `--theme`/`--lexic` without re-transcribing. Not yet implemented.
 
 ## v2 backlog (not started, gated on real feedback — see condition below)
 
@@ -99,4 +103,3 @@ violation — stop and fix the checklist entry, don't just fix the code.
 ## Open decisions (need an explicit answer, not an assumed default)
 
 - `--max-duration` **default values** per preset (currently `fast`=60min, `balanced`=120min, `best`=0/unlimited, set in `src/presets.ts`) — these were candidate placeholders floated early on, never separately confirmed. Enforcement mechanism is now built and correct regardless of what the numbers end up being; only the specific minute values are unconfirmed.
-- Language-flag behavior when transcript language and theme-expansion language differ (e.g. French audio, English `--theme`).
