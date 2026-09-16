@@ -29,10 +29,13 @@ Two mechanisms were considered and explicitly **rejected**:
 
 ## Implementation-level decisions made without explicit confirmation
 
-The obviousness-score *formula* (`literalThemeMatches / totalFieldMatches`) was designed and agreed on together. The numbers below were picked unilaterally while implementing it and were not separately confirmed — flagged here so they're visible and reviewable, not buried in code:
+The obviousness-score *formula* (`literalThemeMatches / totalFieldMatches`) was designed and agreed on together. The interpretation layer on top of it was not, and went through several iterations before landing on the current approach — documented here for that reason.
 
-- **Obviousness-score interpretation bands** (`src/report.ts::interpretObviousness`): ≥ 0.7 "High", ≥ 0.3 "Moderate", below "Low" — with a one-line plain-language reading attached to each band in the Markdown report. These bands shape how every report's headline result reads; worth confirming or adjusting deliberately rather than by default.
-- **Thin-field threshold** (`src/theme.ts::THIN_FIELD_THRESHOLD`): fewer than 8 terms triggers the thin-field disclaimer, on both the dynamic-expansion and `--lexic` paths.
+**Resolved: no semantic labels ("High"/"Moderate"/"Low"), even-division steps instead.** Early attempts (3-band 30/70 split, 4-band quartiles, a single obvious/not-obvious threshold) all required guessing a cutoff with no data to justify it, and an odd number of bands specifically creates a "fence-sitting" middle bucket that can silently absorb most real-world scores. The adopted approach: `--obviousness-steps <n>` (default 2) divides 0–1 into `n` equal-width bands and reports which one the score falls in (`step X/N, band: A%–B%`) — no word to defend, just arithmetic. Raw percentage is always shown regardless of `n`. Implementation: `src/report.ts::computeObviousnessStep`.
+
+**Still an open question, deliberately deferred to v2:** even this is a placeholder — real users will likely want *meaningful* bands (domain-appropriate semantic labels, not just even division) once there's actual usage to calibrate against. That calibration needs real score distributions from real audio, which don't exist yet (the demo audio set that could supply them is itself deferred — see Non-goals/TODO.md). Revisiting this is explicitly gated on real feedback (PR/issue-driven), not another round of guessing defaults — see TODO.md.
+
+- **Thin-field threshold** (`src/theme.ts::THIN_FIELD_THRESHOLD`): fewer than 8 terms triggers the thin-field disclaimer, on both the dynamic-expansion and `--lexic` paths. Same category of unconfirmed default as above, not yet revisited.
 - **Terminal graphic sizing** (`src/report.ts`): 20-character obviousness gauge, 30-character max bar width, top-10 match cap before collapsing the rest into "... and N more". Cosmetic, lower stakes than the two above, but still undisclosed defaults.
 
 ## Design philosophy

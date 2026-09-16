@@ -1,5 +1,47 @@
 import type { AnalysisResult } from "./types.js";
 
+export const DEFAULT_OBVIOUSNESS_STEPS = 2;
+
+export interface ObviousnessStep {
+  step: number;
+  totalSteps: number;
+  /** 0..1 */
+  rangeStart: number;
+  /** 0..1 */
+  rangeEnd: number;
+}
+
+/**
+ * Divides the 0..1 obviousness score into `steps` equal-width bands and
+ * reports which one the score falls in. No semantic labels ("High" /
+ * "Moderate" / "Low") -- those require a judgment call about what counts
+ * as "obvious" that varies by content domain and audience, and every
+ * attempt at a fixed default (3-band, 4-band, threshold) turned out to be
+ * an unconfirmed guess. Even division sidesteps needing one: the user
+ * picks their own granularity via --obviousness-steps, the raw percentage
+ * is always shown alongside it regardless of steps chosen. See INTENT.md
+ * for the fuller reasoning and the deferred v2 idea (user-tunable
+ * semantic bands, if real usage feedback ever asks for it).
+ */
+export function computeObviousnessStep(score: number, steps: number = DEFAULT_OBVIOUSNESS_STEPS): ObviousnessStep {
+  if (!Number.isInteger(steps) || steps < 1) {
+    throw new Error(`obviousness-steps must be a positive integer, got ${steps}`);
+  }
+  const index = Math.min(steps - 1, Math.floor(score * steps));
+  return {
+    step: index + 1,
+    totalSteps: steps,
+    rangeStart: index / steps,
+    rangeEnd: (index + 1) / steps,
+  };
+}
+
+function formatObviousnessStep(step: ObviousnessStep): string {
+  const start = Math.round(step.rangeStart * 100);
+  const end = Math.round(step.rangeEnd * 100);
+  return `step ${step.step}/${step.totalSteps} (band: ${start}%–${end}%)`;
+}
+
 function formatTimestamp(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -8,14 +50,8 @@ function formatTimestamp(seconds: number): string {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
-function interpretObviousness(score: number): string {
-  if (score >= 0.7) {
-    return "High — the theme appears to be this audio's stated subject; results largely confirm what a listener would already know.";
-  }
-  if (score >= 0.3) {
-    return "Moderate — the theme is present both directly and through related vocabulary.";
-  }
-  return "Low — the theme runs through the content mostly via related vocabulary, not as the audio's stated subject. This is the tool's strongest use case.";
+export interface RenderOptions {
+  obviousnessSteps?: number;
 }
 
 /**
@@ -23,14 +59,18 @@ function interpretObviousness(score: number): string {
  * "fastest to slowest to read": score -> disclaimers -> summary table ->
  * timestamped log -> full field -> transcript (linked, not embedded).
  */
-export function renderMarkdown(result: AnalysisResult): string {
+export function renderMarkdown(result: AnalysisResult, options: RenderOptions = {}): string {
   const { field, transcript, obviousnessScore, matches, segmentHits } = result;
+  const steps = options.obviousnessSteps ?? DEFAULT_OBVIOUSNESS_STEPS;
   const lines: string[] = [];
 
   lines.push(`# Thematic Analysis: "${field.theme}"`, "");
 
   lines.push("## Obviousness score", "");
-  lines.push(`**${Math.round(obviousnessScore * 100)}%** — ${interpretObviousness(obviousnessScore)}`, "");
+  lines.push(
+    `**${Math.round(obviousnessScore * 100)}%** — ${formatObviousnessStep(computeObviousnessStep(obviousnessScore, steps))}`,
+    "",
+  );
 
   lines.push("## Disclaimers", "");
   lines.push(
@@ -85,14 +125,16 @@ export function renderMarkdown(result: AnalysisResult): string {
  * gauge, top matches as scaled bar rows. No chart dependency, matches the
  * project's minimal-footprint stance.
  */
-export function renderTerminalGraphic(result: AnalysisResult): string {
+export function renderTerminalGraphic(result: AnalysisResult, options: RenderOptions = {}): string {
   const { obviousnessScore, matches } = result;
+  const steps = options.obviousnessSteps ?? DEFAULT_OBVIOUSNESS_STEPS;
   const lines: string[] = [];
 
   const gaugeWidth = 20;
   const filled = Math.round(obviousnessScore * gaugeWidth);
   const gauge = "█".repeat(filled) + "░".repeat(gaugeWidth - filled);
-  lines.push(`Obviousness [${gauge}] ${Math.round(obviousnessScore * 100)}%`);
+  const step = computeObviousnessStep(obviousnessScore, steps);
+  lines.push(`Obviousness [${gauge}] ${Math.round(obviousnessScore * 100)}% (${formatObviousnessStep(step)})`);
 
   if (matches.length > 0) {
     lines.push("");

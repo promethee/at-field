@@ -1,7 +1,7 @@
 # TODO.md
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
-report), all stages implemented, 35/35 tests passing, typecheck clean.
+report), all stages implemented, 47/47 tests passing, typecheck clean.
 Nothing known broken. Remaining v1 gaps are duration/segment enforcement,
 output-file writing, README, and the deferred demo set.
 
@@ -42,6 +42,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `--lexic words.txt` — static wordlist override, `--theme` still the analysis anchor. File: `src/theme.ts::loadLexicFile(filePath, theme)`. Tested in `src/theme.test.ts`.
 - [x] Thin-field detection: fixed threshold (< 8 terms), applied to both paths, exposed as `LexicalFieldResult.isThin`. Surfaced in both `cli.ts`'s printed disclaimer and `report.ts`'s Markdown. Tested for the static path; dynamic path untested (same model caveat as above).
 - [x] Obviousness score computation — `literalThemeMatches / totalFieldMatches`, 0 matches → score 0. File: `src/analyze.ts`. Tested: 6 cases in `src/analyze.test.ts`.
+- [x] Obviousness score *interpretation* — no semantic labels; `--obviousness-steps <n>` (default 2) divides the score into even bands, reported as `step X/N (band: A%–B%)`. File: `src/report.ts::computeObviousnessStep`, wired via `--obviousness-steps` in `src/cli.ts`. Tested: 5 cases in `src/report.test.ts`. See INTENT.md for why semantic bands (30/70, quartiles, single threshold) were all rejected as unconfirmed guesses.
 - [x] Timestamped occurrence log — one entry per transcript segment containing ≥1 field-term hit, bracketed by Whisper's own segment boundaries (no invented merge-window). File: `src/analyze.ts::computeSegmentHits`, type `SegmentHit` in `src/types.ts`. Tested: 3 cases in `src/analyze.test.ts` (single hit, multiple terms in one segment, empty when no segments).
 - [x] Output shape: `obviousnessScore`, `matches: {term,count}[]`, `segmentHits: {start,end,terms}[]` on `AnalysisResult` (`src/types.ts`).
 
@@ -58,6 +59,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.ts::renderTerminalGraphic` — plain-ASCII obviousness gauge + top-10 bar chart of matches, no chart dependency. Tested: 2 cases in `src/report.test.ts`.
 - [x] `cli.ts` wired to call both and print them — confirmed via typecheck + full suite; **not yet run against real audio** (blocked on the same untestable-in-sandbox model downloads as `transcribe()`/`expandTheme()`).
 - [ ] The Markdown report's "Transcript" section currently just says "see the separate transcript file" — **that file doesn't exist yet.** `cli.ts` only prints to stdout; nothing is written to disk. This is directly tied to the open "default output filename/path convention" decision below — not done until that's resolved and implemented.
+
+## v2 backlog (not started, gated on real feedback — see condition below)
+
+- [ ] **Meaningful obviousness bands.** Current `--obviousness-steps` gives even, unlabeled bands (see INTENT.md) specifically because no real score distribution exists yet to justify semantic labels or uneven cutoffs. Do not revisit this by guessing a better default — only act on it if real usage (GitHub issues/PRs from actual users running the tool on their own audio) asks for it, ideally with example scores attached. Until then, even-steps stays as-is.
 
 ## Explicitly deferred / out of scope for v1
 
@@ -76,10 +81,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/transcribe.test.ts` — `isModelCached()` (3) + `parseWhisperOutput()` (5) = 8 tests.
 - [x] `src/theme.test.ts` — `loadLexicFile()`, incl. theme/lexic regression test = 6 tests.
 - [x] `src/analyze.test.ts` — obviousness score, matching, segmentHits = 9 tests.
-- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including branch coverage for high-obviousness interpretation, empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 15 tests. `report.ts` at 100/100/100 line/branch/func coverage.
+- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input) and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 20 tests.
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module).
-- Current total: **41 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.20%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
+- Current total: **47 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.20%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 

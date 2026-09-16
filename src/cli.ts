@@ -5,7 +5,7 @@ import type { CliOptions } from "./types.js";
 import { transcribe, isModelCached } from "./transcribe.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
-import { renderMarkdown, renderTerminalGraphic } from "./report.js";
+import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
 const program = new Command();
@@ -20,6 +20,11 @@ program
   .option("--whisper-model <model>", "tiny | base | small | medium | large (overrides preset)")
   .option("--max-duration <minutes>", "cap in minutes, 0 = unlimited (overrides preset)")
   .option("--language <code>", "transcript language, default auto-detect")
+  .option(
+    "--obviousness-steps <n>",
+    "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
+    String(DEFAULT_OBVIOUSNESS_STEPS),
+  )
   .action(async (audio: string, opts: Record<string, string>) => {
     if (!opts.theme) {
       program.error("error: --theme is required (always required; --lexic only changes term sourcing)");
@@ -100,8 +105,10 @@ program
     // NOT IMPLEMENTED past this point (analyze.ts, report.ts are stubs).
 
     const result = await analyze(transcript, field);
-    const markdown = renderMarkdown(result);
-    console.log(renderTerminalGraphic(result));
+    const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
+    const renderOptions = { obviousnessSteps };
+    const markdown = renderMarkdown(result, renderOptions);
+    console.log(renderTerminalGraphic(result, renderOptions));
     console.log(markdown);
 
     void PRESETS;
