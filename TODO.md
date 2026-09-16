@@ -1,9 +1,9 @@
 # TODO.md
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
-report), all stages implemented, duration cap now enforced, 56/56 tests
-passing, typecheck clean. Nothing known broken. Remaining v1 gaps are
-explicit segment range flags, output-file writing, README, and the
+report → files written to disk), all stages implemented, duration cap
+enforced, 63/63 tests passing, typecheck clean. Nothing known broken.
+Remaining v1 gaps are explicit segment range flags, README, and the
 deferred demo set.
 
 How to use this file: every `[x]` must have a file reference and an
@@ -59,7 +59,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.ts::renderMarkdown` — full report: title, obviousness score + interpretation, disclaimers (transcript quality + thin-field), summary table (term/count), timestamped occurrence log, full lexical field, transcript section (link/pointer only, text never embedded — see note below). Section order is fastest-to-slowest to read, per design discussion. Tested: 7 cases in `src/report.test.ts`.
 - [x] `src/report.ts::renderTerminalGraphic` — plain-ASCII obviousness gauge + top-10 bar chart of matches, no chart dependency. Tested: 2 cases in `src/report.test.ts`.
 - [x] `cli.ts` wired to call both and print them — confirmed via typecheck + full suite; **not yet run against real audio** (blocked on the same untestable-in-sandbox model downloads as `transcribe()`/`expandTheme()`).
-- [ ] The Markdown report's "Transcript" section currently just says "see the separate transcript file" — **that file doesn't exist yet.** `cli.ts` only prints to stdout; nothing is written to disk. This is directly tied to the open "default output filename/path convention" decision below — not done until that's resolved and implemented.
+- [x] Output files written to disk. Convention: same directory as input audio, `<audio-basename>.<theme-slug>.<short-uuid>.md` + matching `.transcript.txt`. UUID suffix guarantees no collision (including same-day reruns on the same audio+theme) without a date prefix — file mtime already carries recency. File: `src/output.ts::buildOutputPaths`. `report.ts`'s Transcript section now links the real filename via `RenderOptions.transcriptFileName` instead of a generic placeholder line. Tested: 5 cases in `src/output.test.ts` + 2 cases in `report.test.ts` (real filename vs. fallback). Smoke-tested end-to-end (no Whisper needed — fed synthetic data directly) confirming files are written and the report correctly cross-references the transcript file.
 
 ## v2 backlog (not started, gated on real feedback — see condition below)
 
@@ -82,11 +82,12 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/transcribe.test.ts` — `isModelCached()` (3) + `parseWhisperOutput()` (5) = 8 tests.
 - [x] `src/theme.test.ts` — `loadLexicFile()`, incl. theme/lexic regression test = 6 tests.
 - [x] `src/analyze.test.ts` — obviousness score, matching, segmentHits = 9 tests.
-- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 22 tests. 100/100/100 coverage.
+- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), real-vs-fallback transcript filename reference, and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 24 tests. 100/100/100 coverage.
 - [x] `src/audio.test.ts` — duration probing and trimming, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 7 tests. 100% line, 92.86% branch (one contrived-only gap: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below).
+- [x] `src/output.test.ts` — filename generation: same-directory convention, slugification, stem pairing, no-collision across calls, empty-theme fallback = 5 tests. 100/100/100 coverage.
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module).
-- Current total: **56 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.57%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
+- Current total: **63 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.57%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 
@@ -99,4 +100,3 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 - `--max-duration` **default values** per preset (currently `fast`=60min, `balanced`=120min, `best`=0/unlimited, set in `src/presets.ts`) — these were candidate placeholders floated early on, never separately confirmed. Enforcement mechanism is now built and correct regardless of what the numbers end up being; only the specific minute values are unconfirmed.
 - Language-flag behavior when transcript language and theme-expansion language differ (e.g. French audio, English `--theme`).
-- Default output filename/path convention — including whether the transcript gets written to its own file (the Markdown report already assumes this exists and links to it) or v1 only prints to stdout.

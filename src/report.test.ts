@@ -123,6 +123,16 @@ test("renderMarkdown omits the duration-cap disclaimer when durationCap is null"
   assert.doesNotMatch(md, /Duration cap:/);
 });
 
+test("renderMarkdown references the real transcript filename when provided", () => {
+  const md = renderMarkdown(baseResult(), { transcriptFileName: "episode.dogs.a1b2c3d4.transcript.txt" });
+  assert.match(md, /See `episode\.dogs\.a1b2c3d4\.transcript\.txt` \(same directory\)/);
+});
+
+test("renderMarkdown falls back to a generic transcript line when no filename is given", () => {
+  const md = renderMarkdown(baseResult());
+  assert.match(md, /See the separate transcript file/);
+});
+
 test("renderMarkdown shows a no-matches message when matches is empty", () => {
   const md = renderMarkdown(baseResult({ matches: [] }));
   assert.match(md, /No field terms were found in the transcript\./);

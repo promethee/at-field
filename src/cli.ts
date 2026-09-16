@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs";
 import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
 import type { CliOptions } from "./types.js";
@@ -7,6 +8,7 @@ import { trimToMaxDuration } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
+import { buildOutputPaths } from "./output.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
 const program = new Command();
@@ -127,10 +129,17 @@ program
 
     const result = await analyze(transcript, field);
     const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
-    const renderOptions = { obviousnessSteps };
+    const outputPaths = buildOutputPaths(audio, options.theme!);
+    const renderOptions = { obviousnessSteps, transcriptFileName: outputPaths.transcriptFileName };
     const markdown = renderMarkdown(result, renderOptions);
+
+    fs.writeFileSync(outputPaths.reportPath, markdown, "utf-8");
+    fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
+
     console.log(renderTerminalGraphic(result, renderOptions));
     console.log(markdown);
+    console.log(`\nWritten: ${outputPaths.reportPath}`);
+    console.log(`Written: ${outputPaths.transcriptPath}`);
 
     void PRESETS;
   });

@@ -52,6 +52,8 @@ function formatTimestamp(seconds: number): string {
 
 export interface RenderOptions {
   obviousnessSteps?: number;
+  /** filename of the sibling transcript file, if one was written to disk */
+  transcriptFileName?: string;
 }
 
 /**
@@ -122,7 +124,12 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
   lines.push("");
 
   lines.push("## Transcript", "");
-  lines.push("See the separate transcript file for the full text (not embedded in this report).", "");
+  lines.push(
+    options.transcriptFileName
+      ? `See \`${options.transcriptFileName}\` (same directory) for the full transcript text.`
+      : "See the separate transcript file for the full text (not embedded in this report).",
+    "",
+  );
 
   return lines.join("\n");
 }
