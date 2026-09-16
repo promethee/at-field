@@ -20,11 +20,18 @@ export interface TranscriptSegment {
   text: string;
 }
 
+export interface DurationCapInfo {
+  originalSeconds: number;
+  cappedSeconds: number;
+}
+
 export interface TranscriptResult {
   text: string;
   source: TranscriptSource;
   language: string;
   segments: TranscriptSegment[];
+  /** null when no duration cap was applied (audio within cap, or cap disabled) */
+  durationCap: DurationCapInfo | null;
 }
 
 export interface LexicalFieldResult {

@@ -1,9 +1,10 @@
 # TODO.md
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
-report), all stages implemented, 47/47 tests passing, typecheck clean.
-Nothing known broken. Remaining v1 gaps are duration/segment enforcement,
-output-file writing, README, and the deferred demo set.
+report), all stages implemented, duration cap now enforced, 56/56 tests
+passing, typecheck clean. Nothing known broken. Remaining v1 gaps are
+explicit segment range flags, output-file writing, README, and the
+deferred demo set.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
@@ -48,10 +49,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 ## v1 scope — segment / duration handling
 
-- [ ] `--max-duration=<minutes>` flag — parsed in `cli.ts` and defaulted via preset, but nothing in the pipeline enforces/truncates by it. Not done.
-- [ ] `--max-duration=0` disables cap — not implemented (depends on the above).
-- [ ] `--start`/`--end` or `--segment=00:00-30:00` explicit range flags — not implemented.
-- [ ] Truncation notice when default cap applies — not implemented.
+- [x] `--max-duration=<minutes>` flag — now enforced. Audio is trimmed via ffmpeg **before** transcription (not after), so a capped run doesn't pay transcription cost for the discarded portion. Files: `src/audio.ts::trimToMaxDuration` (trim), `src/cli.ts` (wiring). Tested: 7 cases in `src/audio.test.ts`, using real ffmpeg/ffprobe against a generated test tone (not mocked).
+- [x] `--max-duration=0` disables the cap — no probing, no trimming, original file used as-is. Tested.
+- [x] Duration-cap disclosure — printed in `cli.ts` when trimming actually occurs, and included in `report.ts`'s Markdown Disclaimers section (`TranscriptResult.durationCap`, `src/types.ts`). Both paths tested (`src/report.test.ts` for the Markdown line).
+- [ ] `--start`/`--end` or `--segment=00:00-30:00` explicit range flags — not implemented. Separate from the max-duration cap; not attempted this pass.
 
 ## v1 scope — output
 
@@ -81,10 +82,11 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/transcribe.test.ts` — `isModelCached()` (3) + `parseWhisperOutput()` (5) = 8 tests.
 - [x] `src/theme.test.ts` — `loadLexicFile()`, incl. theme/lexic regression test = 6 tests.
 - [x] `src/analyze.test.ts` — obviousness score, matching, segmentHits = 9 tests.
-- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input) and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 20 tests.
+- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 22 tests. 100/100/100 coverage.
+- [x] `src/audio.test.ts` — duration probing and trimming, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 7 tests. 100% line, 92.86% branch (one contrived-only gap: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below).
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module).
-- Current total: **47 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.20%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
+- Current total: **56 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.57%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 
@@ -95,6 +97,6 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 ## Open decisions (need an explicit answer, not an assumed default)
 
-- Exact `--max-duration` default value — a candidate (60 min) was floated, never confirmed.
+- `--max-duration` **default values** per preset (currently `fast`=60min, `balanced`=120min, `best`=0/unlimited, set in `src/presets.ts`) — these were candidate placeholders floated early on, never separately confirmed. Enforcement mechanism is now built and correct regardless of what the numbers end up being; only the specific minute values are unconfirmed.
 - Language-flag behavior when transcript language and theme-expansion language differ (e.g. French audio, English `--theme`).
 - Default output filename/path convention — including whether the transcript gets written to its own file (the Markdown report already assumes this exists and links to it) or v1 only prints to stdout.

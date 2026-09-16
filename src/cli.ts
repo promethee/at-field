@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
 import type { CliOptions } from "./types.js";
 import { transcribe, isModelCached } from "./transcribe.js";
+import { trimToMaxDuration } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
@@ -77,10 +78,30 @@ program
       }
     }
 
+    // --- Duration cap ------------------------------------------------------
+    // Trimmed *before* transcription (not after) so a capped run doesn't pay
+    // transcription cost for the discarded portion. --max-duration=0 (or
+    // unset via preset) disables this entirely.
+
+    const trim = await trimToMaxDuration(audio, options.maxDuration ?? 0);
+    if (trim.trimmed) {
+      const originalMin = (trim.originalSeconds / 60).toFixed(1);
+      const cappedMin = (trim.cappedSeconds! / 60).toFixed(1);
+      console.log(
+        `Duration cap disclaimer: audio is ${originalMin} min, trimmed to the first ${cappedMin} min ` +
+          `before transcription (--max-duration=${options.maxDuration}; use --max-duration=0 to disable). ` +
+          `Content beyond this point was not analyzed.`,
+      );
+    }
+
     // --- Transcription -----------------------------------------------------
 
     console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
-    const transcript = await transcribe(options);
+    const transcript = await transcribe({ ...options, audioPath: trim.path });
+    trim.cleanup();
+    transcript.durationCap = trim.trimmed
+      ? { originalSeconds: trim.originalSeconds, cappedSeconds: trim.cappedSeconds! }
+      : null;
     console.log(
       `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
         `accuracy depends on model size and audio quality.`,

@@ -98,5 +98,9 @@ export async function transcribe(
     segments,
     source: "model",
     language: options.language ?? "auto",
+    // Duration-cap trimming happens before transcribe() is called (see
+    // src/audio.ts + cli.ts) -- transcribe() itself is unaware of it. The
+    // caller attaches the real value afterward.
+    durationCap: null,
   };
 }

@@ -5,7 +5,7 @@ import type { AnalysisResult } from "./types.js";
 
 function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
   return {
-    transcript: { text: "paw leash", source: "model", language: "en", segments: [] },
+    transcript: { text: "paw leash", source: "model", language: "en", segments: [], durationCap: null },
     field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false },
     obviousnessScore: 0.2,
     matches: [
@@ -91,6 +91,7 @@ test("renderMarkdown never embeds the full transcript text", () => {
         source: "model",
         language: "en",
         segments: [],
+        durationCap: null,
       },
     }),
   );
@@ -100,6 +101,26 @@ test("renderMarkdown never embeds the full transcript text", () => {
 test("renderMarkdown lists the full lexical field", () => {
   const md = renderMarkdown(baseResult());
   assert.match(md, /`paw`, `leash`, `breed`/);
+});
+
+test("renderMarkdown includes a duration-cap disclaimer when durationCap is set", () => {
+  const md = renderMarkdown(
+    baseResult({
+      transcript: {
+        text: "paw leash",
+        source: "model",
+        language: "en",
+        segments: [],
+        durationCap: { originalSeconds: 3600, cappedSeconds: 600 },
+      },
+    }),
+  );
+  assert.match(md, /Duration cap: audio was 60\.0 min, trimmed to the first 10\.0 min/);
+});
+
+test("renderMarkdown omits the duration-cap disclaimer when durationCap is null", () => {
+  const md = renderMarkdown(baseResult());
+  assert.doesNotMatch(md, /Duration cap:/);
 });
 
 test("renderMarkdown shows a no-matches message when matches is empty", () => {

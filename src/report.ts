@@ -76,6 +76,13 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
   lines.push(
     `- Transcript quality: local Whisper output (source: \`${transcript.source}\`, language: \`${transcript.language}\`) — accuracy depends on model size and audio quality.`,
   );
+  if (transcript.durationCap) {
+    const originalMin = (transcript.durationCap.originalSeconds / 60).toFixed(1);
+    const cappedMin = (transcript.durationCap.cappedSeconds / 60).toFixed(1);
+    lines.push(
+      `- Duration cap: audio was ${originalMin} min, trimmed to the first ${cappedMin} min before transcription. Content beyond this point was not analyzed and is not reflected anywhere in this report.`,
+    );
+  }
   if (field.isThin) {
     lines.push(
       `- Thin field: only ${field.terms.length} term(s) found for "${field.theme}" (threshold: 8). Results may resemble keyword-spotting rather than a broad thematic analysis.`,
