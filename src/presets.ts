@@ -8,8 +8,10 @@ export interface PresetConfig {
   requiresUpfrontConfirm: boolean;
 }
 
-// Values below are placeholders — max-duration default and best-preset
-// thresholds are still open decisions (see TODO.md "Open decisions").
+// maxDuration: fast=60min ("under 1h" framing), balanced=120min (covers
+// most long-form content), best=0/unlimited (already gated by the
+// upfront confirm in cli.ts, so no additional cap makes sense). Confirmed
+// values -- see TODO.md history / INTENT.md for prior placeholder status.
 export const PRESETS: Record<PresetName, PresetConfig> = {
   fast: {
     whisperModel: "base",

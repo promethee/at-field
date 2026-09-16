@@ -102,4 +102,4 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 ## Open decisions (need an explicit answer, not an assumed default)
 
-- `--max-duration` **default values** per preset (currently `fast`=60min, `balanced`=120min, `best`=0/unlimited, set in `src/presets.ts`) — these were candidate placeholders floated early on, never separately confirmed. Enforcement mechanism is now built and correct regardless of what the numbers end up being; only the specific minute values are unconfirmed.
+None currently open. (`--max-duration` defaults confirmed: `fast`=60min, `balanced`=120min, `best`=0/unlimited — see `src/presets.ts`.)
