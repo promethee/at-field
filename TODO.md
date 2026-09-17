@@ -115,10 +115,11 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 ## Docs / project hygiene
 
-- [ ] README.md — not created yet. Needs the "what this is / isn't" framing from INTENT.md plus a working one-liner example.
+- [x] `README.md` — written. Opener/philosophy/non-goals distilled from INTENT.md (wording reviewed and revised point-by-point in chat, not copied verbatim — e.g. dropped the named-competitor comparison as overclaiming for a portfolio project). Sections: opener + one-liner example, why the obviousness score, install (Node 20+/ffmpeg prereq), flags table, philosophy, what-this-isn't, known limitations (language mismatch, thin-field), license, "made with AI, designed by human". No demo GIF yet (see item below).
 - [x] Project name: `at-field` — checked clean on npm + PyPI, no meaningful GitHub collision.
 - [x] License: MIT — `LICENSE` file added, `package.json` `license` field synced.
 - [ ] Demo / GitHub-page audio set — deferred by explicit request. Sourcing research done (Spoken Wikipedia, LibriVox, EN/FR) — see chat history, not yet written anywhere durable in the repo.
+- [ ] Simulated-usage demo GIF for the README — explicitly a fabricated/scripted terminal session (canned example output matching `renderTerminalGraphic`'s format), not a real recording against real audio/model. Attempted via puppeteer (node-canvas failed: no prebuilt binary for the sandbox's Node version, no native toolchain to build it) in a scratch dir, not committed. Abandoned mid-debug this session ("done later") — puppeteer + Chromium download did work by the end, next attempt can resume from there instead of re-evaluating canvas.
 
 ## Open decisions (need an explicit answer, not an assumed default)
 
