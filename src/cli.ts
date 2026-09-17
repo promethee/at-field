@@ -4,7 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
 import type { CliOptions, TranscriptResult } from "./types.js";
-import { transcribe, isModelCached } from "./transcribe.js";
+import { transcribe, isModelCached, ensureModelDownloaded } from "./transcribe.js";
 import { trimToMaxDuration, trimToRange, parseTimeToSeconds, type RangeTrimResult } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
@@ -174,7 +174,9 @@ program
           process.exitCode = 1;
           return;
         }
+        console.log(`Downloading whisper model "${options.whisperModel}"...`);
       }
+      await ensureModelDownloaded(options.whisperModel!);
 
       // --- Segment range (--start/--end) ------------------------------
       // Extracted *before* transcription and before the duration cap, so a
@@ -216,8 +218,13 @@ program
       }
 
       // --- Transcription -----------------------------------------------
+      // Prints the audio duration actually being transcribed (a known
+      // fact, not a time-to-complete guess) so a long run doesn't look
+      // identical to a stuck one -- see INTENT.md's "stage-transition
+      // terminal disclosure" note.
 
-      console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
+      const transcribeDurationMin = ((trim.trimmed ? trim.cappedSeconds! : trim.originalSeconds) / 60).toFixed(1);
+      console.log(`Transcribing ${transcribeDurationMin} min of audio with model "${options.whisperModel}"...`);
       transcript = await transcribe({ ...options, audioPath: trim.path });
       trim.cleanup();
       rangeTrim.cleanup();
@@ -292,6 +299,12 @@ program
     // --theme is always the analysis anchor. --lexic only swaps how the
     // field's terms are sourced (static file vs. dynamic LLM expansion).
 
+    // Stage message only for the dynamic path -- loading/running a local
+    // LLM is the kind of silent wait this disclosure is meant to cover;
+    // --lexic's file read is effectively instant and doesn't need one.
+    if (!options.lexic) {
+      console.log(`Expanding theme "${options.theme}" into a lexical field...`);
+    }
     const field = options.lexic
       ? await loadLexicFile(options.lexic, options.theme!)
       : await expandTheme(options.theme!);

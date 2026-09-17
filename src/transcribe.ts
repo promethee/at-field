@@ -71,12 +71,13 @@ function downloadFile(url: string, destPath: string): Promise<void> {
 }
 
 /**
- * Downloads the given model's weights if not already cached. Idempotent --
- * safe to call unconditionally from transcribe(); the caller's own
- * isModelCached() check (in cli.ts) is only there to decide whether to show
- * the first-run confirm prompt before this actually runs.
+ * Downloads the given model's weights if not already cached. Idempotent.
+ * Called explicitly from cli.ts (after its own confirm gate) rather than
+ * internally from transcribe() -- so a multi-GB download gets its own
+ * visible stage message instead of silently happening while the
+ * "Transcribing..." message is already on screen.
  */
-async function ensureModelDownloaded(model: string): Promise<void> {
+export async function ensureModelDownloaded(model: string): Promise<void> {
   const destPath = modelPathFor(model);
   if (fs.existsSync(destPath)) return;
   fs.mkdirSync(MODEL_DIR, { recursive: true });
@@ -87,9 +88,10 @@ async function ensureModelDownloaded(model: string): Promise<void> {
 /**
  * Transcribes the input audio with a local Whisper model via
  * @fugood/whisper.node (prebuilt native whisper.cpp bindings -- no local
- * compile step, unlike the nodejs-whisper backend this replaced). Model
- * download (if not cached) happens here; call isModelCached() first if a
- * confirm prompt is required before downloading.
+ * compile step, unlike the nodejs-whisper backend this replaced). Assumes
+ * the model is already downloaded -- callers must await
+ * ensureModelDownloaded() first (cli.ts does, with its own confirm gate
+ * and stage message; this function stays a pure transcription step).
  */
 export async function transcribe(
   options: Pick<CliOptions, "audioPath" | "whisperModel" | "language">,
@@ -99,8 +101,6 @@ export async function transcribe(
   if (!fs.existsSync(options.audioPath)) {
     throw new Error(`Audio file not found: ${options.audioPath}`);
   }
-
-  await ensureModelDownloaded(model);
 
   const requestedLanguage = options.language ?? "auto";
 
