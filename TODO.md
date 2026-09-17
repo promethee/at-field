@@ -24,6 +24,16 @@ violation — stop and fix the checklist entry, don't just fix the code.
   matching line-by-line instead of with one multi-line regex. Caught by
   `src/transcribe.test.ts::"parseWhisperOutput ignores non-segment lines
   and empty segments"` before being shipped as "done".
+- [x] A relative audio path (e.g. typed from the user's own cwd, not the
+  repo) broke transcription with a confusing `input file not found
+  '<name>.wav'` from whisper-cli.exe itself. Root cause: `nodejs-whisper`
+  `cd`s into its own install directory before invoking whisper-cli, so a
+  relative path silently resolves against the wrong directory once
+  whisper.cpp's own wav conversion runs. Found via real `npx` tarball
+  testing on a second machine, not caught by any existing test (all
+  existing tests use paths already resolved relative to the repo). Fixed
+  in `src/cli.ts` by resolving the audio argument to absolute
+  (`path.resolve`) as the very first thing the action handler does.
 
 ## v1 scope — transcription pipeline
 
@@ -83,9 +93,15 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] Output files written to disk. Convention: same directory as input audio, `<audio-basename>.<theme-slug>.<short-uuid>.md` + matching `.transcript.txt`. UUID suffix guarantees no collision (including same-day reruns on the same audio+theme) without a date prefix — file mtime already carries recency. File: `src/output.ts::buildOutputPaths`. `report.ts`'s Transcript section now links the real filename via `RenderOptions.transcriptFileName` instead of a generic placeholder line. Tested: 5 cases in `src/output.test.ts` + 2 cases in `report.test.ts` (real filename vs. fallback). Smoke-tested end-to-end (no Whisper needed — fed synthetic data directly) confirming files are written and the report correctly cross-references the transcript file.
 - [x] **Implicit transcript-artifact reuse.** Before any Whisper-related confirm gates or transcription, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (`src/output.ts::findExistingTranscript`, most-recently-modified wins if several match). If found, an interactive confirm (default yes) offers to reuse it — accepting skips the `--preset best`/model-download confirms and transcription entirely, not just the transcribe call. Disclosure printed on reuse: no saved segment timestamps (timestamped occurrences will be empty) or language metadata (auto-mode language-mismatch check is skipped that run). The report references the *original* reused filename rather than duplicating the file under a new name. No new flag — reads back a file the tool's own output convention already produces. Tested: 5 cases in `src/output.test.ts` (found/not-found, wrong-theme ignored, most-recent-wins, unreadable-directory). Smoke-tested end-to-end with a real CLI invocation and a manually-planted transcript file — confirmed it skips straight past all Whisper setup to theme expansion, no model-download prompt at all.
 
+## Decided, not yet started
+
+- [ ] **Swap `nodejs-whisper` for `@huggingface/transformers` (ONNX + WASM Whisper).** Decided by the maintainer after `nodejs-whisper`'s on-demand whisper.cpp build (CMake + a C++ compiler, no prebuilt binaries) proved to fail for real on a second test machine — a genuine upstream `ggml-cpu.c`/MinGW-w64-headers incompatibility (`THREAD_POWER_THROTTLING_STATE` undeclared), not something in our control to fix or worth chasing per-machine. `@huggingface/transformers` needs no native compile step on the user's machine (its Node backend, `onnxruntime-node`, ships prebuilt native binaries per platform via a normal `npm install`), removing this whole failure class. Explicitly decided *without* a before/after speed benchmark — expected somewhat slower than native-compiled whisper.cpp (rough estimate 1.2-2x, unverified), accepted as the tradeoff for reliability across machines. Scope: replace the dependency; rewrite `src/transcribe.ts` (new inference API, re-derive segment timestamps from its output format, different model-cache mechanism than `isModelCached()`'s current file-existence check); update `src/transcribe.test.ts` and anything relying on Whisper's own auto-detected-language stderr line (`src/language.ts::extractWhisperDetectedLanguage`, since that whisper.cpp-specific mechanism goes away). Not started.
+
 ## v2 backlog (not started, gated on real feedback — see condition below)
 
 - [ ] **Meaningful obviousness bands.** Current `--obviousness-steps` gives even, unlabeled bands (see INTENT.md) specifically because no real score distribution exists yet to justify semantic labels or uneven cutoffs. Do not revisit this by guessing a better default — only act on it if real usage (GitHub issues/PRs from actual users running the tool on their own audio) asks for it, ideally with example scores attached. Until then, even-steps stays as-is.
+- [ ] **Stage-transition terminal disclosure.** Raised directly by the maintainer (not gated on external feedback like the item above) as a UX mitigation for slow runs on weak hardware: print a line at each pipeline stage transition (range extraction, duration-cap trim, transcription start incl. model + estimated audio-length-based duration, theme expansion, analysis) instead of one line before a long silent wait. Fits the project's existing "disclosure, not gatekeeping" philosophy (see INTENT.md). Explicitly *not* a live progress bar — stays at stage-transition granularity to avoid clashing with the tool's minimal-output stance. Not started.
+- [ ] **Surface nodejs-whisper's captured debug log on transcription failure.** Found while diagnosing a real "whisper-cli executable not found" error on a second test machine (nodejs-whisper compiles whisper.cpp on first use via CMake; a silent build failure there surfaces as this bare, undiagnosable message instead). `src/transcribe.ts`'s `captureLogger` already collects nodejs-whisper's debug lines (build steps, exit codes) for language detection, but discards them when `nodewhisper()` throws. Printing them on failure would turn an opaque error into an actionable one. Not started.
 
 ## Explicitly deferred / out of scope for v1
 

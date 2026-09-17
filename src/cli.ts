@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import fs from "node:fs";
+import path from "node:path";
 import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
 import type { CliOptions, TranscriptResult } from "./types.js";
@@ -31,7 +32,15 @@ program
     "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
     String(DEFAULT_OBVIOUSNESS_STEPS),
   )
-  .action(async (audio: string, opts: Record<string, string>) => {
+  .action(async (audioArg: string, opts: Record<string, string>) => {
+    // Resolved to absolute immediately: nodejs-whisper's whisper-cli
+    // invocation cd's into its own install directory before running, so a
+    // relative path (e.g. typed from the user's cwd) silently resolves
+    // against the wrong directory once whisper.cpp's own wav conversion
+    // runs, producing a confusing "input file not found" from whisper-cli
+    // itself rather than a clear error from this codebase.
+    const audio = path.resolve(audioArg);
+
     if (!opts.theme) {
       program.error("error: --theme is required (always required; --lexic only changes term sourcing)");
     }
