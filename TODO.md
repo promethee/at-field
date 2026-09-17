@@ -2,9 +2,9 @@
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
 report → files written to disk), all stages implemented, duration cap,
-language-mismatch checks, and implicit transcript reuse all enforced,
-77/77 tests passing, typecheck clean. Nothing known broken. Remaining v1
-gaps are explicit segment range flags, README, and the deferred demo set.
+explicit segment range, language-mismatch checks, and implicit transcript
+reuse all enforced, 89/89 tests passing, typecheck clean. Nothing known
+broken. Remaining v1 gaps are README and the deferred demo set.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
@@ -57,7 +57,23 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `--max-duration=<minutes>` flag — now enforced. Audio is trimmed via ffmpeg **before** transcription (not after), so a capped run doesn't pay transcription cost for the discarded portion. Files: `src/audio.ts::trimToMaxDuration` (trim), `src/cli.ts` (wiring). Tested: 7 cases in `src/audio.test.ts`, using real ffmpeg/ffprobe against a generated test tone (not mocked).
 - [x] `--max-duration=0` disables the cap — no probing, no trimming, original file used as-is. Tested.
 - [x] Duration-cap disclosure — printed in `cli.ts` when trimming actually occurs, and included in `report.ts`'s Markdown Disclaimers section (`TranscriptResult.durationCap`, `src/types.ts`). Both paths tested (`src/report.test.ts` for the Markdown line).
-- [ ] `--start`/`--end` or `--segment=00:00-30:00` explicit range flags — not implemented. Separate from the max-duration cap; not attempted this pass.
+- [x] `--start <time>`/`--end <time>` explicit range flags. Accepts plain
+  seconds, `MM:SS`, or `HH:MM:SS` (`src/audio.ts::parseTimeToSeconds`).
+  Extraction (`src/audio.ts::trimToRange`) runs before transcription and
+  before the duration cap, independent of `--max-duration` — the cap then
+  applies to the extracted range's own duration, not the original file's.
+  `--start` at/past the audio's duration, or `--end` at/before `--start`,
+  errors out before any confirm gates (`src/cli.ts`). Whisper's
+  clip-relative segment timestamps are offset back to the original audio's
+  timeline (`src/cli.ts`) so timestamped occurrences stay meaningful.
+  Disclosed in both `cli.ts`'s printed output and `report.ts`'s Markdown
+  (`TranscriptResult.segmentRange`, `src/types.ts`). Ignored (with a
+  printed note) when reusing an existing transcript, since transcription
+  itself is skipped in that path. Tested: 8 cases in `src/audio.test.ts`
+  (`parseTimeToSeconds` valid/invalid, `trimToRange` disabled/extract/
+  start-only/end-clamping/validation errors) + 3 cases in
+  `src/report.test.ts` (disclaimer with explicit end, "end of audio"
+  fallback, omitted when null).
 
 ## v1 scope — output
 
@@ -88,14 +104,14 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/transcribe.test.ts` — `isModelCached()` (3) + `parseWhisperOutput()` (5) = 8 tests.
 - [x] `src/theme.test.ts` — `loadLexicFile()`, incl. theme/lexic regression test = 6 tests.
 - [x] `src/analyze.test.ts` — obviousness score, matching, segmentHits = 9 tests.
-- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), real-vs-fallback transcript filename reference, and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 24 tests. 100/100/100 coverage.
-- [x] `src/audio.test.ts` — duration probing and trimming, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 7 tests. 100% line, 92.86% branch (one contrived-only gap: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below).
+- [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), segment-range disclaimer (explicit end/"end of audio" fallback/absent), real-vs-fallback transcript filename reference, and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 27 tests. 100/100/100 coverage.
+- [x] `src/audio.test.ts` — duration probing/trimming plus `--start`/`--end` range parsing and extraction, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 15 tests (7 duration-cap + 3 `parseTimeToSeconds` + 5 `trimToRange`). One contrived-only gap carried over from before: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below.
 - [x] `src/output.test.ts` — filename generation: same-directory convention, slugification, stem pairing, no-collision across calls, empty-theme fallback = 5 tests. 100/100/100 coverage.
 - [x] `src/language.test.ts` — language detection confidence (clear EN/FR sentences vs. short ambiguous strings), match/mismatch/ambiguous outcomes, and whisper.cpp log-line parsing (including case-insensitivity) = 9 tests. 100% line, 93.33% branch (one gap: a real detected language with no ISO 639-1 equivalent — not reproduced with real sample text after reasonable effort, same class as `audio.ts`'s gap).
 - [x] `src/output.test.ts` (extended) — `findExistingTranscript`: found/not-found, wrong-theme ignored, most-recently-modified wins among several matches, unreadable-directory fallback. 100/100/100 coverage maintained.
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module). The language-mismatch flow was smoke-tested manually instead (see the item above) — a real integration test would cover this properly.
-- Current total: **77 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (84.13%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
+- Current total: **89 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (84.13%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 

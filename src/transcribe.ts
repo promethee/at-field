@@ -118,9 +118,10 @@ export async function transcribe(
     segments,
     source: "model",
     language: detectedLanguage,
-    // Duration-cap trimming happens before transcribe() is called (see
-    // src/audio.ts + cli.ts) -- transcribe() itself is unaware of it. The
-    // caller attaches the real value afterward.
+    // Duration-cap / segment-range trimming both happen before transcribe()
+    // is called (see src/audio.ts + cli.ts) -- transcribe() itself is
+    // unaware of either. The caller attaches the real values afterward.
     durationCap: null,
+    segmentRange: null,
   };
 }

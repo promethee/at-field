@@ -5,7 +5,14 @@ import type { AnalysisResult } from "./types.js";
 
 function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
   return {
-    transcript: { text: "paw leash", source: "model", language: "en", segments: [], durationCap: null },
+    transcript: {
+      text: "paw leash",
+      source: "model",
+      language: "en",
+      segments: [],
+      durationCap: null,
+      segmentRange: null,
+    },
     field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false },
     obviousnessScore: 0.2,
     matches: [
@@ -92,6 +99,7 @@ test("renderMarkdown never embeds the full transcript text", () => {
         language: "en",
         segments: [],
         durationCap: null,
+        segmentRange: null,
       },
     }),
   );
@@ -112,6 +120,7 @@ test("renderMarkdown includes a duration-cap disclaimer when durationCap is set"
         language: "en",
         segments: [],
         durationCap: { originalSeconds: 3600, cappedSeconds: 600 },
+        segmentRange: null,
       },
     }),
   );
@@ -121,6 +130,43 @@ test("renderMarkdown includes a duration-cap disclaimer when durationCap is set"
 test("renderMarkdown omits the duration-cap disclaimer when durationCap is null", () => {
   const md = renderMarkdown(baseResult());
   assert.doesNotMatch(md, /Duration cap:/);
+});
+
+test("renderMarkdown includes a segment-range disclaimer with an explicit end when segmentRange is set", () => {
+  const md = renderMarkdown(
+    baseResult({
+      transcript: {
+        text: "paw leash",
+        source: "model",
+        language: "en",
+        segments: [],
+        durationCap: null,
+        segmentRange: { startSeconds: 90, endSeconds: 330 },
+      },
+    }),
+  );
+  assert.match(md, /Segment range: analyzed 01:30–05:30 only \(--start\/--end\)/);
+});
+
+test("renderMarkdown shows 'end of audio' when segmentRange has no explicit end", () => {
+  const md = renderMarkdown(
+    baseResult({
+      transcript: {
+        text: "paw leash",
+        source: "model",
+        language: "en",
+        segments: [],
+        durationCap: null,
+        segmentRange: { startSeconds: 90, endSeconds: null },
+      },
+    }),
+  );
+  assert.match(md, /Segment range: analyzed 01:30–end of audio only/);
+});
+
+test("renderMarkdown omits the segment-range disclaimer when segmentRange is null", () => {
+  const md = renderMarkdown(baseResult());
+  assert.doesNotMatch(md, /Segment range:/);
 });
 
 test("renderMarkdown references the real transcript filename when provided", () => {

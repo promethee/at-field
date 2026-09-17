@@ -4,10 +4,10 @@ import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
 import type { CliOptions, TranscriptResult } from "./types.js";
 import { transcribe, isModelCached } from "./transcribe.js";
-import { trimToMaxDuration } from "./audio.js";
+import { trimToMaxDuration, trimToRange, parseTimeToSeconds, type RangeTrimResult } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
-import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
+import { renderMarkdown, renderTerminalGraphic, formatTimestamp, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
 import { buildOutputPaths, findExistingTranscript } from "./output.js";
 import { checkLanguageMatch } from "./language.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
@@ -23,6 +23,8 @@ program
   .option("--preset <name>", "fast | balanced | best", "fast")
   .option("--whisper-model <model>", "tiny | base | small | medium | large (overrides preset)")
   .option("--max-duration <minutes>", "cap in minutes, 0 = unlimited (overrides preset)")
+  .option("--start <time>", "start of the range to analyze, e.g. 90, 01:30, or 00:01:30 (default: start of audio)")
+  .option("--end <time>", "end of the range to analyze, same format as --start (default: end of audio)")
   .option("--language <code>", "transcript language, default auto-detect")
   .option(
     "--obviousness-steps <n>",
@@ -37,6 +39,21 @@ program
     const presetName = (opts.preset as PresetName) ?? "fast";
     const preset = resolvePreset(presetName);
 
+    // --- --start/--end parsing --------------------------------------------
+    // Free, instant validation -- runs before any confirm gates for the same
+    // reason as the explicit --language check below.
+    let startSeconds: number | null = null;
+    let endSeconds: number | null = null;
+    try {
+      if (opts.start) startSeconds = parseTimeToSeconds(opts.start);
+      if (opts.end) endSeconds = parseTimeToSeconds(opts.end);
+    } catch (err) {
+      program.error(`error: ${(err as Error).message}`);
+    }
+    if (startSeconds !== null && endSeconds !== null && endSeconds <= startSeconds) {
+      program.error(`error: --end (${opts.end}) must be after --start (${opts.start})`);
+    }
+
     const options: CliOptions = {
       audioPath: audio,
       theme: opts.theme,
@@ -45,6 +62,8 @@ program
       whisperModel: (opts.whisperModel as CliOptions["whisperModel"]) ?? preset.whisperModel,
       maxDuration: opts.maxDuration ? Number(opts.maxDuration) : preset.maxDuration,
       language: opts.language,
+      startSeconds,
+      endSeconds,
     };
 
     // --- Language mismatch check (explicit --language only) ---------------
@@ -96,12 +115,19 @@ program
             `timestamped occurrences will be empty in this report, and the language-mismatch check ` +
             `is skipped this run.`,
         );
+        if (options.startSeconds !== null || options.endSeconds !== null) {
+          console.log(
+            `Note: --start/--end are ignored when reusing an existing transcript, since transcription itself ` +
+              `is skipped entirely -- delete the transcript file to force a re-transcription that honors them.`,
+          );
+        }
         transcript = {
           text: fs.readFileSync(existing.path, "utf-8"),
           source: "model",
           language: "unknown",
           segments: [],
           durationCap: null,
+          segmentRange: null,
         };
         transcriptFileNameForReport = existing.fileName;
         shouldWriteTranscriptFile = false;
@@ -144,12 +170,35 @@ program
         }
       }
 
+      // --- Segment range (--start/--end) ------------------------------
+      // Extracted *before* transcription and before the duration cap, so a
+      // ranged run doesn't pay transcription cost for audio outside the
+      // requested range. Independent of --max-duration: the cap below then
+      // applies to this range's own duration, not the original file's.
+
+      let rangeTrim: RangeTrimResult;
+      try {
+        rangeTrim = await trimToRange(audio, options.startSeconds ?? null, options.endSeconds ?? null);
+      } catch (err) {
+        program.error(`error: ${(err as Error).message}`);
+        return;
+      }
+      if (rangeTrim.trimmed) {
+        const startLabel = formatTimestamp(rangeTrim.range!.startSeconds);
+        const endLabel =
+          rangeTrim.range!.endSeconds !== null ? formatTimestamp(rangeTrim.range!.endSeconds) : "end of audio";
+        console.log(
+          `Segment range disclaimer: analyzing ${startLabel}–${endLabel} only (--start/--end). ` +
+            `Content outside this range was not analyzed.`,
+        );
+      }
+
       // --- Duration cap ----------------------------------------------------
       // Trimmed *before* transcription (not after) so a capped run doesn't
       // pay transcription cost for the discarded portion. --max-duration=0
       // (or unset via preset) disables this entirely.
 
-      const trim = await trimToMaxDuration(audio, options.maxDuration ?? 0);
+      const trim = await trimToMaxDuration(rangeTrim.path, options.maxDuration ?? 0);
       if (trim.trimmed) {
         const originalMin = (trim.originalSeconds / 60).toFixed(1);
         const cappedMin = (trim.cappedSeconds! / 60).toFixed(1);
@@ -165,9 +214,23 @@ program
       console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
       transcript = await transcribe({ ...options, audioPath: trim.path });
       trim.cleanup();
+      rangeTrim.cleanup();
       transcript.durationCap = trim.trimmed
         ? { originalSeconds: trim.originalSeconds, cappedSeconds: trim.cappedSeconds! }
         : null;
+      transcript.segmentRange = rangeTrim.range;
+      if (rangeTrim.range) {
+        // Whisper's segment timestamps are relative to the extracted clip
+        // (0-based) -- offset them back to the original audio's timeline so
+        // the report's timestamped occurrences remain meaningful absolute
+        // positions, not confusing clip-relative ones.
+        const offset = rangeTrim.range.startSeconds;
+        transcript.segments = transcript.segments.map((s) => ({
+          ...s,
+          start: s.start + offset,
+          end: s.end + offset,
+        }));
+      }
       console.log(
         `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
           `accuracy depends on model size and audio quality.`,

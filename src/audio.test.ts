@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getAudioDurationSeconds, trimToMaxDuration } from "./audio.js";
+import { getAudioDurationSeconds, trimToMaxDuration, trimToRange, parseTimeToSeconds } from "./audio.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -77,4 +77,68 @@ test("trimToMaxDuration with cap disabled still reports NaN duration rather than
   const result = await trimToMaxDuration("/tmp/at-field-does-not-exist.wav", 0);
   assert.equal(result.trimmed, false);
   assert.ok(Number.isNaN(result.originalSeconds));
+});
+
+test("parseTimeToSeconds accepts plain seconds", () => {
+  assert.equal(parseTimeToSeconds("90"), 90);
+  assert.equal(parseTimeToSeconds("90.5"), 90.5);
+});
+
+test("parseTimeToSeconds accepts MM:SS and HH:MM:SS", () => {
+  assert.equal(parseTimeToSeconds("01:30"), 90);
+  assert.equal(parseTimeToSeconds("01:02:03"), 3723);
+});
+
+test("parseTimeToSeconds rejects malformed input", () => {
+  assert.throws(() => parseTimeToSeconds("abc"), /invalid time value/);
+  assert.throws(() => parseTimeToSeconds("1:2:3:4"), /invalid time value/);
+  assert.throws(() => parseTimeToSeconds(""), /invalid time value/);
+  assert.throws(() => parseTimeToSeconds("-5"), /invalid time value/);
+});
+
+test("trimToRange disables extraction entirely when neither start nor end is given", async () => {
+  const result = await trimToRange(tonePath, null, null);
+  assert.equal(result.trimmed, false);
+  assert.equal(result.path, tonePath);
+  assert.equal(result.range, null);
+  assert.doesNotThrow(() => result.cleanup());
+});
+
+test("trimToRange extracts [start, end) into a temp file", async () => {
+  const result = await trimToRange(tonePath, 2, 6); // 10s tone -> take seconds 2-6
+  assert.equal(result.trimmed, true);
+  assert.notEqual(result.path, tonePath);
+  assert.deepEqual(result.range, { startSeconds: 2, endSeconds: 6 });
+
+  const extractedDuration = await getAudioDurationSeconds(result.path);
+  assert.ok(Math.abs(extractedDuration - 4) < 0.5, `expected ~4s, got ${extractedDuration}`);
+
+  result.cleanup();
+  assert.equal(fs.existsSync(result.path), false);
+});
+
+test("trimToRange with only --start given runs to the original audio's end", async () => {
+  const result = await trimToRange(tonePath, 7, null);
+  assert.equal(result.trimmed, true);
+  assert.deepEqual(result.range, { startSeconds: 7, endSeconds: null });
+
+  const extractedDuration = await getAudioDurationSeconds(result.path);
+  assert.ok(Math.abs(extractedDuration - 3) < 0.5, `expected ~3s, got ${extractedDuration}`);
+
+  result.cleanup();
+});
+
+test("trimToRange clamps an --end beyond the audio's actual duration", async () => {
+  const result = await trimToRange(tonePath, 0, 999);
+  assert.ok(Math.abs((result.range?.endSeconds ?? 0) - 10) < 0.5, `expected clamp to ~10s, got ${result.range?.endSeconds}`);
+  result.cleanup();
+});
+
+test("trimToRange rejects --start at or past the audio's duration", async () => {
+  await assert.rejects(() => trimToRange(tonePath, 999, null), /at or past the audio's duration/);
+});
+
+test("trimToRange rejects --end at or before --start", async () => {
+  await assert.rejects(() => trimToRange(tonePath, 5, 5), /must be after --start/);
+  await assert.rejects(() => trimToRange(tonePath, 5, 3), /must be after --start/);
 });

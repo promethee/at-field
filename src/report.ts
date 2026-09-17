@@ -42,7 +42,7 @@ function formatObviousnessStep(step: ObviousnessStep): string {
   return `step ${step.step}/${step.totalSteps} (band: ${start}%–${end}%)`;
 }
 
-function formatTimestamp(seconds: number): string {
+export function formatTimestamp(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
@@ -83,6 +83,14 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
     const cappedMin = (transcript.durationCap.cappedSeconds / 60).toFixed(1);
     lines.push(
       `- Duration cap: audio was ${originalMin} min, trimmed to the first ${cappedMin} min before transcription. Content beyond this point was not analyzed and is not reflected anywhere in this report.`,
+    );
+  }
+  if (transcript.segmentRange) {
+    const startLabel = formatTimestamp(transcript.segmentRange.startSeconds);
+    const endLabel =
+      transcript.segmentRange.endSeconds !== null ? formatTimestamp(transcript.segmentRange.endSeconds) : "end of audio";
+    lines.push(
+      `- Segment range: analyzed ${startLabel}–${endLabel} only (--start/--end). Content outside this range is not reflected anywhere in this report.`,
     );
   }
   if (field.isThin) {

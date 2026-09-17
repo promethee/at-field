@@ -8,6 +8,10 @@ export interface CliOptions {
   whisperModel?: "tiny" | "base" | "small" | "medium" | "large";
   maxDuration?: number;
   language?: string;
+  /** seconds; null/undefined when not given */
+  startSeconds?: number | null;
+  /** seconds; null/undefined when not given */
+  endSeconds?: number | null;
 }
 
 export type TranscriptSource = "manual" | "auto" | "model";
@@ -25,6 +29,12 @@ export interface DurationCapInfo {
   cappedSeconds: number;
 }
 
+export interface SegmentRangeInfo {
+  startSeconds: number;
+  /** null when no explicit --end was given (range runs to the original audio's end) */
+  endSeconds: number | null;
+}
+
 export interface TranscriptResult {
   text: string;
   source: TranscriptSource;
@@ -32,6 +42,8 @@ export interface TranscriptResult {
   segments: TranscriptSegment[];
   /** null when no duration cap was applied (audio within cap, or cap disabled) */
   durationCap: DurationCapInfo | null;
+  /** null when no --start/--end range was requested */
+  segmentRange: SegmentRangeInfo | null;
 }
 
 export interface LexicalFieldResult {
