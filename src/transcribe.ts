@@ -4,6 +4,7 @@ import { nodewhisper } from "nodejs-whisper";
 // Deep import: nodejs-whisper has no "exports" map, so subpath imports are
 // allowed. Used to replicate its own cache-check logic without transcribing.
 import { WHISPER_CPP_PATH, MODEL_OBJECT } from "nodejs-whisper/dist/constants.js";
+import { extractWhisperDetectedLanguage } from "./language.js";
 
 import type { CliOptions, TranscriptResult, TranscriptSegment } from "./types.js";
 
@@ -79,6 +80,20 @@ export async function transcribe(
     throw new Error(`Audio file not found: ${options.audioPath}`);
   }
 
+  const requestedLanguage = options.language ?? "auto";
+
+  // whisper.cpp writes its auto-detected-language line to stderr, which
+  // nodejs-whisper only exposes via a custom logger's debug() (its own
+  // returned stdout never contains it). Capture that here so
+  // TranscriptResult.language reflects what Whisper actually detected in
+  // auto mode, not just the string we requested.
+  const capturedLogLines: string[] = [];
+  const captureLogger = {
+    debug: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
+    log: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
+    error: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
+  };
+
   // No outputInText/outputInJson flag set: whisper.cpp's default stdout
   // already includes per-segment timestamps, which parseWhisperOutput()
   // reads directly -- avoids managing a second output file.
@@ -86,18 +101,23 @@ export async function transcribe(
     modelName: model,
     autoDownloadModelName: model,
     removeWavFileAfterTranscription: true,
+    logger: captureLogger,
     whisperOptions: {
-      language: options.language ?? "auto",
+      language: requestedLanguage,
     },
   });
 
   const { text, segments } = parseWhisperOutput(stdout);
+  const detectedLanguage =
+    requestedLanguage === "auto"
+      ? (extractWhisperDetectedLanguage(capturedLogLines) ?? "auto")
+      : requestedLanguage;
 
   return {
     text,
     segments,
     source: "model",
-    language: options.language ?? "auto",
+    language: detectedLanguage,
     // Duration-cap trimming happens before transcribe() is called (see
     // src/audio.ts + cli.ts) -- transcribe() itself is unaware of it. The
     // caller attaches the real value afterward.

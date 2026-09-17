@@ -9,6 +9,7 @@ import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
 import { buildOutputPaths } from "./output.js";
+import { checkLanguageMatch } from "./language.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
 const program = new Command();
@@ -45,6 +46,32 @@ program
       maxDuration: opts.maxDuration ? Number(opts.maxDuration) : preset.maxDuration,
       language: opts.language,
     };
+
+    // --- Language mismatch check (explicit --language only) ---------------
+    // Runs first, before any confirm gates: it's a free, instant check that
+    // can invalidate the whole invocation, so it shouldn't happen after the
+    // user's already been asked to confirm a model download. If --language
+    // is set explicitly, the user already stated ground truth, so a clear
+    // mismatch is an error in the invocation itself -- hard stop. Ambiguous
+    // detection (short --theme strings often are) only warns.
+    // --language=auto can't be checked here -- Whisper hasn't run yet, so
+    // there's nothing to compare against; that case is checked after
+    // transcription instead.
+    if (options.language && options.language !== "auto") {
+      const match = checkLanguageMatch(options.theme!, options.language);
+      if (match === "mismatch") {
+        program.error(
+          `error: --theme "${options.theme}" appears to be in a different language than ` +
+            `--language=${options.language}. Lexical matching relies on --theme and the transcript ` +
+            `being in the same language -- rerun with --theme written in that language, or correct --language.`,
+        );
+      } else if (match === "ambiguous") {
+        console.log(
+          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
+            `to compare against --language=${options.language}. If matches come back empty, this may be why.`,
+        );
+      }
+    }
 
     // --- Confirm gates ---------------------------------------------------
 
@@ -109,6 +136,42 @@ program
         `accuracy depends on model size and audio quality.`,
     );
 
+    // Output paths + transcript file are written now, before the
+    // language-mismatch check below, so that an early exit on mismatch
+    // still leaves the transcript on disk -- reusable on retry (see
+    // TODO.md's "implicit transcript-artifact reuse", not yet implemented,
+    // but the artifact this turn's message references genuinely exists).
+    const outputPaths = buildOutputPaths(audio, options.theme!);
+    fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
+
+    // --- Language mismatch check (--language=auto case) ---------------
+    // Only reachable here when --language was auto/unset: transcript.language
+    // now holds Whisper's real detected code (see transcribe.ts). Checked
+    // before analysis/report so a mismatch never produces a misleading
+    // near-all-zero-matches result -- transcription cost is already spent
+    // either way, so stopping here still prevents a bad output from
+    // reaching the user. See INTENT.md for why this can't be checked earlier.
+    if ((!options.language || options.language === "auto") && transcript.language !== "auto") {
+      const match = checkLanguageMatch(options.theme!, transcript.language);
+      if (match === "mismatch") {
+        console.log(
+          `error: --theme "${options.theme}" appears to be in a different language than the audio ` +
+            `(detected: ${transcript.language}). Lexical matching relies on --theme and the transcript ` +
+            `being in the same language. The transcript was already written to ${outputPaths.transcriptPath} ` +
+            `and can be reused on retry -- see TODO.md's "implicit transcript-artifact reuse" item (not yet ` +
+            `implemented). Rerun with --theme written in the audio's language, or set --language explicitly.`,
+        );
+        process.exitCode = 1;
+        return;
+      } else if (match === "ambiguous") {
+        console.log(
+          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
+            `to compare against the audio's detected language (${transcript.language}). If matches come ` +
+            `back empty, this may be why.`,
+        );
+      }
+    }
+
     // --- Theme / lexical field ---------------------------------------------
     // --theme is always the analysis anchor. --lexic only swaps how the
     // field's terms are sourced (static file vs. dynamic LLM expansion).
@@ -125,16 +188,13 @@ program
     }
 
     // --- Analysis + report ---------------------------------------------
-    // NOT IMPLEMENTED past this point (analyze.ts, report.ts are stubs).
 
     const result = await analyze(transcript, field);
     const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
-    const outputPaths = buildOutputPaths(audio, options.theme!);
     const renderOptions = { obviousnessSteps, transcriptFileName: outputPaths.transcriptFileName };
     const markdown = renderMarkdown(result, renderOptions);
 
     fs.writeFileSync(outputPaths.reportPath, markdown, "utf-8");
-    fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
 
     console.log(renderTerminalGraphic(result, renderOptions));
     console.log(markdown);

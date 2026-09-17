@@ -1,10 +1,10 @@
 # TODO.md
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
-report → files written to disk), all stages implemented, duration cap
-enforced, 63/63 tests passing, typecheck clean. Nothing known broken.
-Remaining v1 gaps are explicit segment range flags, README, and the
-deferred demo set.
+report → files written to disk), all stages implemented, duration cap and
+language-mismatch checks enforced, 72/72 tests passing, typecheck clean.
+Nothing known broken. Remaining v1 gaps are implicit transcript reuse,
+explicit segment range flags, README, and the deferred demo set.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
@@ -34,10 +34,12 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] First-run download-size confirm, skipped if model already cached. File: `src/confirm.ts` + wired in `src/cli.ts`. Untested (interactive prompt, no test harness for it yet).
 - [x] `--preset fast|balanced|best` — bundles whisper-model + max-duration + theme-mode defaults. File: `src/presets.ts`. Tested: `src/presets.test.ts`. `best` triggers the upfront confirm in `cli.ts`.
 - [x] Per-run transcript-quality disclaimer, always shown. Printed in `src/cli.ts` after transcription, and also included in `report.ts`'s Markdown output. One fixed message for the only v1 source (`model`).
-- [ ] `--language` flag: **behavior now decided, not yet implemented.**
-  - `--language <code>` set explicitly: detect `--theme`'s language, compare to `<code>`. Match → proceed. Clear mismatch → hard stop with an error (no `--yes` bypass — the user already stated ground truth, so a mismatch means the invocation itself is wrong). Ambiguous detection (short/ambiguous `--theme` string) → warn, don't block.
-  - `--language auto` (default): nothing to check pre-transcription (auto only tells Whisper "detect it yourself" — it does not translate anything). Run transcription first, then detect `--theme`'s language against Whisper's detected transcript language; on mismatch, stop **before writing the report** (transcription cost is already spent either way, so stopping late still prevents a misleading result) rather than silently producing a near-all-zero-matches report. See INTENT.md for the fuller reasoning and the rejected alternatives (translation, a `--theme-language` flag, confirm-gate-only).
-  - Needs a language-detection step for a short `--theme` string (pick a small local library or reuse a heuristic — not yet chosen).
+- [x] `--language` flag: **implemented.**
+  - `--language <code>` set explicitly: checked first, before any confirm gates (free/instant — shouldn't come after a model-download prompt). Detects `--theme`'s language (`src/language.ts::detectLanguageCode`, franc-min + iso-639-3 code mapping) and compares to `<code>`. Mismatch → hard stop via `program.error`. Ambiguous (common for short `--theme` strings) → warn, proceed.
+  - `--language auto` (default): checked after transcription. Required fixing a real gap in `transcribe.ts` — `nodejs-whisper`'s return value never contained Whisper's actual auto-detected language (whisper.cpp writes it to stderr, which the library only forwards to a custom `logger.debug()`, not the resolved promise); `TranscriptResult.language` was silently echoing back the *requested* string ("auto") instead. Fixed by passing a capturing logger and parsing the `auto-detected language: en (p = 0.99)` line (`src/language.ts::extractWhisperDetectedLanguage`). On mismatch: transcript file is now written *before* this check (moved up in `cli.ts` specifically so the stop message's "already on disk" claim is true), then the run exits before analysis/report. On ambiguous: warn, proceed.
+  - Language-detection library: `franc-min` (short strings often return `und`/unconfident — by design, not a bug) + `iso-639-3`'s `iso6393To1` map to compare against Whisper's 2-letter codes.
+  - Tested: 9 cases in `src/language.test.ts`. Not tested: the auto-mode path end-to-end (needs real Whisper + real mismatched audio/theme — same sandbox limitation as `expandTheme()`/`transcribe()`). Smoke-tested manually: explicit-mismatch hard-stops correctly and *before* the model-download confirm (fixed an ordering bug found while implementing — the check originally ran after confirm gates); explicit-match correctly proceeds.
+  - Known gap: `language.ts` branch coverage 93.33% (one path — a real detected language with no ISO 639-1 equivalent — not reproduced with real sample text after reasonable effort; same class as `audio.ts`'s one gap, not chased further).
 
 ## v1 scope — theme / lexical analysis
 
@@ -63,7 +65,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.ts::renderTerminalGraphic` — plain-ASCII obviousness gauge + top-10 bar chart of matches, no chart dependency. Tested: 2 cases in `src/report.test.ts`.
 - [x] `cli.ts` wired to call both and print them — confirmed via typecheck + full suite; **not yet run against real audio** (blocked on the same untestable-in-sandbox model downloads as `transcribe()`/`expandTheme()`).
 - [x] Output files written to disk. Convention: same directory as input audio, `<audio-basename>.<theme-slug>.<short-uuid>.md` + matching `.transcript.txt`. UUID suffix guarantees no collision (including same-day reruns on the same audio+theme) without a date prefix — file mtime already carries recency. File: `src/output.ts::buildOutputPaths`. `report.ts`'s Transcript section now links the real filename via `RenderOptions.transcriptFileName` instead of a generic placeholder line. Tested: 5 cases in `src/output.test.ts` + 2 cases in `report.test.ts` (real filename vs. fallback). Smoke-tested end-to-end (no Whisper needed — fed synthetic data directly) confirming files are written and the report correctly cross-references the transcript file.
-- [ ] **Implicit transcript-artifact reuse.** Before transcribing, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (same naming convention `output.ts` already produces). If found, offer to reuse it instead of re-running Whisper, with a printed disclosure ("Reusing existing transcript from `<file>` — delete it to force re-transcription"). No new flag — a side effect of the existing output convention, not a separate feature surface. Directly removes the real cost of the `--language auto` mismatch-stop above (retry becomes free once a transcript already exists for that audio+theme), and is generally useful for iterating on `--theme`/`--lexic` without re-transcribing. Not yet implemented.
+- [ ] **Implicit transcript-artifact reuse.** Before transcribing, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (same naming convention `output.ts` already produces). If found, offer to reuse it instead of re-running Whisper, with a printed disclosure ("Reusing existing transcript from `<file>` — delete it to force re-transcription"). No new flag — a side effect of the existing output convention, not a separate feature surface. Directly removes the real cost of the `--language auto` mismatch-stop above — the transcript file is now written immediately after transcription (moved earlier in `cli.ts` specifically for this), so it already exists to be reused once this lands. Also generally useful for iterating on `--theme`/`--lexic` without re-transcribing. Not yet implemented.
 
 ## v2 backlog (not started, gated on real feedback — see condition below)
 
@@ -89,9 +91,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.test.ts` — Markdown + terminal graphic rendering, including `computeObviousnessStep` unit tests (even division, boundary at score 1.0, arbitrary step counts, invalid input), duration-cap disclaimer (present/absent), real-vs-fallback transcript filename reference, and branch coverage for empty matches/segmentHits/field, hour-scale timestamps, and empty-matches terminal graphic = 24 tests. 100/100/100 coverage.
 - [x] `src/audio.test.ts` — duration probing and trimming, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 7 tests. 100% line, 92.86% branch (one contrived-only gap: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below).
 - [x] `src/output.test.ts` — filename generation: same-directory convention, slugification, stem pairing, no-collision across calls, empty-theme fallback = 5 tests. 100/100/100 coverage.
+- [x] `src/language.test.ts` — language detection confidence (clear EN/FR sentences vs. short ambiguous strings), match/mismatch/ambiguous outcomes, and whisper.cpp log-line parsing (including case-insensitivity) = 9 tests. 100% line, 93.33% branch (one gap: a real detected language with no ISO 639-1 equivalent — not reproduced with real sample text after reasonable effort, same class as `audio.ts`'s gap).
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
-- [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module).
-- Current total: **63 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (90.57%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
+- [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module). The language-mismatch flow was smoke-tested manually instead (see the item above) — a real integration test would cover this properly.
+- Current total: **72 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (84.13%, dropped slightly from adding the logger-capture/language-detection logic — same real-model-I/O reason as before) — not gaps to close with more unit tests.
 
 ## Docs / project hygiene
 
