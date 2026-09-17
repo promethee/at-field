@@ -1,10 +1,10 @@
 # TODO.md
 
 Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze →
-report → files written to disk), all stages implemented, duration cap and
-language-mismatch checks enforced, 72/72 tests passing, typecheck clean.
-Nothing known broken. Remaining v1 gaps are implicit transcript reuse,
-explicit segment range flags, README, and the deferred demo set.
+report → files written to disk), all stages implemented, duration cap,
+language-mismatch checks, and implicit transcript reuse all enforced,
+77/77 tests passing, typecheck clean. Nothing known broken. Remaining v1
+gaps are explicit segment range flags, README, and the deferred demo set.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
@@ -65,7 +65,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/report.ts::renderTerminalGraphic` — plain-ASCII obviousness gauge + top-10 bar chart of matches, no chart dependency. Tested: 2 cases in `src/report.test.ts`.
 - [x] `cli.ts` wired to call both and print them — confirmed via typecheck + full suite; **not yet run against real audio** (blocked on the same untestable-in-sandbox model downloads as `transcribe()`/`expandTheme()`).
 - [x] Output files written to disk. Convention: same directory as input audio, `<audio-basename>.<theme-slug>.<short-uuid>.md` + matching `.transcript.txt`. UUID suffix guarantees no collision (including same-day reruns on the same audio+theme) without a date prefix — file mtime already carries recency. File: `src/output.ts::buildOutputPaths`. `report.ts`'s Transcript section now links the real filename via `RenderOptions.transcriptFileName` instead of a generic placeholder line. Tested: 5 cases in `src/output.test.ts` + 2 cases in `report.test.ts` (real filename vs. fallback). Smoke-tested end-to-end (no Whisper needed — fed synthetic data directly) confirming files are written and the report correctly cross-references the transcript file.
-- [ ] **Implicit transcript-artifact reuse.** Before transcribing, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (same naming convention `output.ts` already produces). If found, offer to reuse it instead of re-running Whisper, with a printed disclosure ("Reusing existing transcript from `<file>` — delete it to force re-transcription"). No new flag — a side effect of the existing output convention, not a separate feature surface. Directly removes the real cost of the `--language auto` mismatch-stop above — the transcript file is now written immediately after transcription (moved earlier in `cli.ts` specifically for this), so it already exists to be reused once this lands. Also generally useful for iterating on `--theme`/`--lexic` without re-transcribing. Not yet implemented.
+- [x] **Implicit transcript-artifact reuse.** Before any Whisper-related confirm gates or transcription, glob the audio's directory for an existing `<audio-basename>.<theme-slug>.*.transcript.txt` (`src/output.ts::findExistingTranscript`, most-recently-modified wins if several match). If found, an interactive confirm (default yes) offers to reuse it — accepting skips the `--preset best`/model-download confirms and transcription entirely, not just the transcribe call. Disclosure printed on reuse: no saved segment timestamps (timestamped occurrences will be empty) or language metadata (auto-mode language-mismatch check is skipped that run). The report references the *original* reused filename rather than duplicating the file under a new name. No new flag — reads back a file the tool's own output convention already produces. Tested: 5 cases in `src/output.test.ts` (found/not-found, wrong-theme ignored, most-recent-wins, unreadable-directory). Smoke-tested end-to-end with a real CLI invocation and a manually-planted transcript file — confirmed it skips straight past all Whisper setup to theme expansion, no model-download prompt at all.
 
 ## v2 backlog (not started, gated on real feedback — see condition below)
 
@@ -92,9 +92,10 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `src/audio.test.ts` — duration probing and trimming, using **real ffmpeg/ffprobe** against a generated test tone (no mocking) = 7 tests. 100% line, 92.86% branch (one contrived-only gap: ffprobe succeeding but returning unparseable output — not chased, same class as other real-I/O gaps below).
 - [x] `src/output.test.ts` — filename generation: same-directory convention, slugification, stem pairing, no-collision across calls, empty-theme fallback = 5 tests. 100/100/100 coverage.
 - [x] `src/language.test.ts` — language detection confidence (clear EN/FR sentences vs. short ambiguous strings), match/mismatch/ambiguous outcomes, and whisper.cpp log-line parsing (including case-insensitivity) = 9 tests. 100% line, 93.33% branch (one gap: a real detected language with no ISO 639-1 equivalent — not reproduced with real sample text after reasonable effort, same class as `audio.ts`'s gap).
+- [x] `src/output.test.ts` (extended) — `findExistingTranscript`: found/not-found, wrong-theme ignored, most-recently-modified wins among several matches, unreadable-directory fallback. 100/100/100 coverage maintained.
 - [ ] Tests for `expandTheme()` — needs a mocking strategy for `node-llama-cpp` (or a tiny local test-only GGUF); can't run against real HF downloads in a sandboxed/CI environment.
 - [ ] Integration test driving `cli.ts`'s `action()` end-to-end (currently unit-level only, per module). The language-mismatch flow was smoke-tested manually instead (see the item above) — a real integration test would cover this properly.
-- Current total: **72 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (84.13%, dropped slightly from adding the logger-capture/language-detection logic — same real-model-I/O reason as before) — not gaps to close with more unit tests.
+- Current total: **77 tests, all passing** (verified in-sandbox as of this update; re-verify on the maintainer's machine before trusting the count). Remaining coverage gaps are `theme.ts` (67.59%) and `transcribe.ts` (84.13%) — both are the real-model-I/O functions (`expandTheme`, `isThemeModelCached`, `transcribe`) that can't be unit-tested without a live model; not a gap to close with more unit tests.
 
 ## Docs / project hygiene
 

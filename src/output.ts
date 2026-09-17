@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 
 function slugify(value: string): string {
@@ -39,4 +40,42 @@ export function buildOutputPaths(audioPath: string, theme: string): OutputPaths 
     reportFileName,
     transcriptFileName,
   };
+}
+
+export interface ExistingTranscript {
+  path: string;
+  fileName: string;
+}
+
+/**
+ * Looks for a transcript file already written for this exact audio+theme
+ * combination (same naming convention buildOutputPaths produces), so a
+ * retry -- e.g. after a language-mismatch stop -- can skip re-transcribing
+ * entirely. No new flag: this is a side effect of the existing output
+ * convention, not a separate feature surface (see INTENT.md). If more than
+ * one matches (multiple prior runs), the most recently modified one wins.
+ */
+export function findExistingTranscript(audioPath: string, theme: string): ExistingTranscript | null {
+  const dir = path.dirname(audioPath);
+  const audioBase = slugify(path.basename(audioPath, path.extname(audioPath)));
+  const themeSlug = slugify(theme);
+  const pattern = new RegExp(`^${audioBase}\\.${themeSlug}\\.[0-9a-f]{8}\\.transcript\\.txt$`);
+
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return null;
+  }
+
+  const matches = entries
+    .filter((name) => pattern.test(name))
+    .map((name) => {
+      const fullPath = path.join(dir, name);
+      return { fileName: name, path: fullPath, mtime: fs.statSync(fullPath).mtimeMs };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+
+  if (matches.length === 0) return null;
+  return { path: matches[0].path, fileName: matches[0].fileName };
 }

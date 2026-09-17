@@ -2,13 +2,13 @@
 import fs from "node:fs";
 import { Command } from "commander";
 import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
-import type { CliOptions } from "./types.js";
+import type { CliOptions, TranscriptResult } from "./types.js";
 import { transcribe, isModelCached } from "./transcribe.js";
 import { trimToMaxDuration } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
-import { buildOutputPaths } from "./output.js";
+import { buildOutputPaths, findExistingTranscript } from "./output.js";
 import { checkLanguageMatch } from "./language.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
@@ -73,93 +73,140 @@ program
       }
     }
 
-    // --- Confirm gates ---------------------------------------------------
+    // --- Implicit transcript-artifact reuse ---------------------------
+    // Checked before any Whisper-related confirm gates/transcription, so
+    // accepting reuse skips their cost entirely -- not just the transcribe
+    // call. No new flag: this reads back a file the tool's own output
+    // convention already produces (see INTENT.md / TODO.md).
+    let transcript: TranscriptResult | null = null;
+    let transcriptFileNameForReport: string | null = null;
+    let shouldWriteTranscriptFile = true;
 
-    // 1. Preset "best" confirm: uncapped duration + heaviest default model.
-    //    Non-blocking philosophy still applies -- this is a one-time cost
-    //    decision (see AGENTS.md), not a "prove you understand" flag.
-    if (preset.requiresUpfrontConfirm) {
-      const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
-      const proceed = await confirm(
-        `--preset best runs uncapped duration with the "${options.whisperModel}" model ` +
-          `(~${approxSize} MB if not already downloaded). This can take a long time on long audio. Continue?`,
-      );
-      if (!proceed) {
-        console.log("Aborted.");
-        process.exitCode = 0;
-        return;
-      }
-    }
-
-    // 2. Model-download confirm: only if the resolved whisper model isn't
-    //    cached yet. Applies regardless of preset.
-    const whisperCached = await isModelCached(options.whisperModel!);
-    if (!whisperCached) {
-      const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
-      const proceed = await confirm(
-        `Whisper model "${options.whisperModel}" (~${approxSize} MB) is not downloaded yet. Download now?`,
+    const existing = findExistingTranscript(audio, options.theme!);
+    if (existing) {
+      const reuse = await confirm(
+        `Found an existing transcript from a previous run: ${existing.fileName}. ` +
+          `Reuse it instead of re-transcribing? (delete the file to force re-transcription)`,
         true,
       );
-      if (!proceed) {
-        console.log("Aborted — no model downloaded.");
-        process.exitCode = 1;
-        return;
+      if (reuse) {
+        console.log(
+          `Reusing existing transcript from ${existing.path} — delete it to force re-transcription. ` +
+            `Note: reused transcripts have no saved segment timestamps or language metadata -- ` +
+            `timestamped occurrences will be empty in this report, and the language-mismatch check ` +
+            `is skipped this run.`,
+        );
+        transcript = {
+          text: fs.readFileSync(existing.path, "utf-8"),
+          source: "model",
+          language: "unknown",
+          segments: [],
+          durationCap: null,
+        };
+        transcriptFileNameForReport = existing.fileName;
+        shouldWriteTranscriptFile = false;
       }
     }
 
-    // --- Duration cap ------------------------------------------------------
-    // Trimmed *before* transcription (not after) so a capped run doesn't pay
-    // transcription cost for the discarded portion. --max-duration=0 (or
-    // unset via preset) disables this entirely.
+    // --- Confirm gates ---------------------------------------------------
+    // Skipped entirely when a transcript was reused above.
 
-    const trim = await trimToMaxDuration(audio, options.maxDuration ?? 0);
-    if (trim.trimmed) {
-      const originalMin = (trim.originalSeconds / 60).toFixed(1);
-      const cappedMin = (trim.cappedSeconds! / 60).toFixed(1);
+    if (!transcript) {
+      // 1. Preset "best" confirm: uncapped duration + heaviest default model.
+      //    Non-blocking philosophy still applies -- this is a one-time cost
+      //    decision (see AGENTS.md), not a "prove you understand" flag.
+      if (preset.requiresUpfrontConfirm) {
+        const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
+        const proceed = await confirm(
+          `--preset best runs uncapped duration with the "${options.whisperModel}" model ` +
+            `(~${approxSize} MB if not already downloaded). This can take a long time on long audio. Continue?`,
+        );
+        if (!proceed) {
+          console.log("Aborted.");
+          process.exitCode = 0;
+          return;
+        }
+      }
+
+      // 2. Model-download confirm: only if the resolved whisper model isn't
+      //    cached yet. Applies regardless of preset.
+      const whisperCached = await isModelCached(options.whisperModel!);
+      if (!whisperCached) {
+        const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
+        const proceed = await confirm(
+          `Whisper model "${options.whisperModel}" (~${approxSize} MB) is not downloaded yet. Download now?`,
+          true,
+        );
+        if (!proceed) {
+          console.log("Aborted — no model downloaded.");
+          process.exitCode = 1;
+          return;
+        }
+      }
+
+      // --- Duration cap ----------------------------------------------------
+      // Trimmed *before* transcription (not after) so a capped run doesn't
+      // pay transcription cost for the discarded portion. --max-duration=0
+      // (or unset via preset) disables this entirely.
+
+      const trim = await trimToMaxDuration(audio, options.maxDuration ?? 0);
+      if (trim.trimmed) {
+        const originalMin = (trim.originalSeconds / 60).toFixed(1);
+        const cappedMin = (trim.cappedSeconds! / 60).toFixed(1);
+        console.log(
+          `Duration cap disclaimer: audio is ${originalMin} min, trimmed to the first ${cappedMin} min ` +
+            `before transcription (--max-duration=${options.maxDuration}; use --max-duration=0 to disable). ` +
+            `Content beyond this point was not analyzed.`,
+        );
+      }
+
+      // --- Transcription -----------------------------------------------
+
+      console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
+      transcript = await transcribe({ ...options, audioPath: trim.path });
+      trim.cleanup();
+      transcript.durationCap = trim.trimmed
+        ? { originalSeconds: trim.originalSeconds, cappedSeconds: trim.cappedSeconds! }
+        : null;
       console.log(
-        `Duration cap disclaimer: audio is ${originalMin} min, trimmed to the first ${cappedMin} min ` +
-          `before transcription (--max-duration=${options.maxDuration}; use --max-duration=0 to disable). ` +
-          `Content beyond this point was not analyzed.`,
+        `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
+          `accuracy depends on model size and audio quality.`,
       );
     }
 
-    // --- Transcription -----------------------------------------------------
-
-    console.log(`Transcribing "${audio}" with model "${options.whisperModel}"...`);
-    const transcript = await transcribe({ ...options, audioPath: trim.path });
-    trim.cleanup();
-    transcript.durationCap = trim.trimmed
-      ? { originalSeconds: trim.originalSeconds, cappedSeconds: trim.cappedSeconds! }
-      : null;
-    console.log(
-      `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
-        `accuracy depends on model size and audio quality.`,
-    );
-
-    // Output paths + transcript file are written now, before the
-    // language-mismatch check below, so that an early exit on mismatch
-    // still leaves the transcript on disk -- reusable on retry (see
-    // TODO.md's "implicit transcript-artifact reuse", not yet implemented,
-    // but the artifact this turn's message references genuinely exists).
+    // Output paths are always fresh (new UUID) for the report; the
+    // transcript file is only (re)written when this run actually
+    // transcribed -- a reused transcript keeps its original filename,
+    // referenced directly in the report instead of being duplicated.
     const outputPaths = buildOutputPaths(audio, options.theme!);
-    fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
+    if (shouldWriteTranscriptFile) {
+      fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
+      transcriptFileNameForReport = outputPaths.transcriptFileName;
+    }
 
     // --- Language mismatch check (--language=auto case) ---------------
-    // Only reachable here when --language was auto/unset: transcript.language
-    // now holds Whisper's real detected code (see transcribe.ts). Checked
-    // before analysis/report so a mismatch never produces a misleading
-    // near-all-zero-matches result -- transcription cost is already spent
-    // either way, so stopping here still prevents a bad output from
-    // reaching the user. See INTENT.md for why this can't be checked earlier.
-    if ((!options.language || options.language === "auto") && transcript.language !== "auto") {
+    // Only reachable when --language was auto/unset AND this run actually
+    // transcribed (transcript.language now holds Whisper's real detected
+    // code -- see transcribe.ts). Skipped for a reused transcript, which
+    // has no saved language metadata to check against (disclosed above).
+    // Checked before analysis/report so a mismatch never produces a
+    // misleading near-all-zero-matches result -- transcription cost is
+    // already spent either way, so stopping here still prevents a bad
+    // output from reaching the user. See INTENT.md for why this can't be
+    // checked earlier.
+    if (
+      shouldWriteTranscriptFile &&
+      (!options.language || options.language === "auto") &&
+      transcript.language !== "auto"
+    ) {
       const match = checkLanguageMatch(options.theme!, transcript.language);
       if (match === "mismatch") {
         console.log(
           `error: --theme "${options.theme}" appears to be in a different language than the audio ` +
             `(detected: ${transcript.language}). Lexical matching relies on --theme and the transcript ` +
             `being in the same language. The transcript was already written to ${outputPaths.transcriptPath} ` +
-            `and can be reused on retry -- see TODO.md's "implicit transcript-artifact reuse" item (not yet ` +
-            `implemented). Rerun with --theme written in the audio's language, or set --language explicitly.`,
+            `and will be offered for reuse on your next run with this audio+theme. Rerun with --theme ` +
+            `written in the audio's language, or set --language explicitly.`,
         );
         process.exitCode = 1;
         return;
@@ -191,7 +238,7 @@ program
 
     const result = await analyze(transcript, field);
     const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
-    const renderOptions = { obviousnessSteps, transcriptFileName: outputPaths.transcriptFileName };
+    const renderOptions = { obviousnessSteps, transcriptFileName: transcriptFileNameForReport ?? undefined };
     const markdown = renderMarkdown(result, renderOptions);
 
     fs.writeFileSync(outputPaths.reportPath, markdown, "utf-8");
@@ -199,7 +246,9 @@ program
     console.log(renderTerminalGraphic(result, renderOptions));
     console.log(markdown);
     console.log(`\nWritten: ${outputPaths.reportPath}`);
-    console.log(`Written: ${outputPaths.transcriptPath}`);
+    if (shouldWriteTranscriptFile) {
+      console.log(`Written: ${outputPaths.transcriptPath}`);
+    }
 
     void PRESETS;
   });
