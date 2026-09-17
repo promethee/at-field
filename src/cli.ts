@@ -10,7 +10,7 @@ import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
 import { renderMarkdown, renderTerminalGraphic, formatTimestamp, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
 import { buildOutputPaths, findExistingTranscript } from "./output.js";
-import { checkLanguageMatch } from "./language.js";
+import { checkLanguageMatch, detectLanguageCode } from "./language.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
 
 const program = new Command();
@@ -76,20 +76,28 @@ program
     // Runs first, before any confirm gates: it's a free, instant check that
     // can invalidate the whole invocation, so it shouldn't happen after the
     // user's already been asked to confirm a model download. If --language
-    // is set explicitly, the user already stated ground truth, so a clear
-    // mismatch is an error in the invocation itself -- hard stop. Ambiguous
-    // detection (short --theme strings often are) only warns.
+    // is set explicitly, the user already stated ground truth, so a mismatch
+    // is disclosed and confirmed rather than blocked outright -- franc-min
+    // can confidently misdetect short/unusual --theme phrases (see
+    // INTENT.md), so a hard stop here would sometimes reject valid input.
+    // Ambiguous detection (short --theme strings often are) only warns.
     // --language=auto can't be checked here -- Whisper hasn't run yet, so
     // there's nothing to compare against; that case is checked after
     // transcription instead.
     if (options.language && options.language !== "auto") {
       const match = checkLanguageMatch(options.theme!, options.language);
       if (match === "mismatch") {
-        program.error(
-          `error: --theme "${options.theme}" appears to be in a different language than ` +
-            `--language=${options.language}. Lexical matching relies on --theme and the transcript ` +
-            `being in the same language -- rerun with --theme written in that language, or correct --language.`,
+        const themeLang = detectLanguageCode(options.theme!).code;
+        const proceed = await confirm(
+          `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but --language is set ` +
+            `to "${options.language}". Short theme phrases are sometimes misdetected -- try a longer phrase ` +
+            `or a synonym, or continue if this is a false positive. Continue anyway?`,
         );
+        if (!proceed) {
+          console.log("Aborted.");
+          process.exitCode = 1;
+          return;
+        }
       } else if (match === "ambiguous") {
         console.log(
           `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
