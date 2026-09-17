@@ -4,7 +4,7 @@ Status: full pipeline wired end-to-end (transcribe → theme/lexic → analyze �
 report → files written to disk), all stages implemented, duration cap,
 explicit segment range, language-mismatch checks, and implicit transcript
 reuse all enforced, 89/89 tests passing, typecheck clean. Nothing known
-broken. Remaining v1 gaps are README and the deferred demo set.
+broken. README written. Remaining v1 gap is the demo GIF.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
@@ -91,6 +91,7 @@ violation — stop and fix the checklist entry, don't just fix the code.
 
 - Theme-discovery mode (no `--theme` given) — rejected, see INTENT.md.
 - Subject→topic promotion logic — rejected, see INTENT.md.
+- Downloadable/linked sample audio on the GitHub page — would have needed sourcing a properly licensed demo file (Spoken Wikipedia, LibriVox were candidates); dropped as unnecessary, not worth the licensing legwork.
 - Non-Markdown output formats (JSON, HTML, PDF).
 - Hosted/API-based transcription or theme-expansion fallback.
 - Multi-transcript / batch processing.
@@ -118,7 +119,6 @@ violation — stop and fix the checklist entry, don't just fix the code.
 - [x] `README.md` — written. Opener/philosophy/non-goals distilled from INTENT.md (wording reviewed and revised point-by-point in chat, not copied verbatim — e.g. dropped the named-competitor comparison as overclaiming for a portfolio project). Sections: opener + one-liner example, why the obviousness score, install (Node 20+/ffmpeg prereq), flags table, philosophy, what-this-isn't, known limitations (language mismatch, thin-field), license, "made with AI, designed by human". No demo GIF yet (see item below).
 - [x] Project name: `at-field` — checked clean on npm + PyPI, no meaningful GitHub collision.
 - [x] License: MIT — `LICENSE` file added, `package.json` `license` field synced.
-- [ ] Demo / GitHub-page audio set — deferred by explicit request. Sourcing research done (Spoken Wikipedia, LibriVox, EN/FR) — see chat history, not yet written anywhere durable in the repo.
 - [ ] Simulated-usage demo GIF for the README — explicitly a fabricated/scripted terminal session (canned example output matching `renderTerminalGraphic`'s format), not a real recording against real audio/model. Attempted via puppeteer (node-canvas failed: no prebuilt binary for the sandbox's Node version, no native toolchain to build it) in a scratch dir, not committed. Abandoned mid-debug this session ("done later") — puppeteer + Chromium download did work by the end, next attempt can resume from there instead of re-evaluating canvas.
 
 ## Open decisions (need an explicit answer, not an assumed default)
