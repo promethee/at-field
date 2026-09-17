@@ -16,11 +16,11 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@fugood/whisper.node": "^1.2.0-rc.0",
     "commander": "^12.1.0",
     "franc-min": "^6.2.0",
     "iso-639-3": "^3.0.1",
-    "node-llama-cpp": "^3.21.1",
-    "nodejs-whisper": "^0.3.1"
+    "node-llama-cpp": "^3.21.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

@@ -1,75 +1,95 @@
 import fs from "node:fs";
+import https from "node:https";
+import os from "node:os";
 import path from "node:path";
-import { nodewhisper } from "nodejs-whisper";
-// Deep import: nodejs-whisper has no "exports" map, so subpath imports are
-// allowed. Used to replicate its own cache-check logic without transcribing.
-import { WHISPER_CPP_PATH, MODEL_OBJECT } from "nodejs-whisper/dist/constants.js";
-import { extractWhisperDetectedLanguage } from "./language.js";
+import { initWhisper } from "@fugood/whisper.node";
 
 import type { CliOptions, TranscriptResult, TranscriptSegment } from "./types.js";
 
-export type WhisperModelName = keyof typeof MODEL_OBJECT;
+export type WhisperModelName = "tiny" | "base" | "small" | "medium" | "large";
+
+// Filenames as published under huggingface.co/ggerganov/whisper.cpp -- the
+// same official GGML model repo nodejs-whisper's own download script used.
+// "large" maps to the current v3 release; the other four map 1:1.
+const MODEL_FILENAMES: Record<WhisperModelName, string> = {
+  tiny: "ggml-tiny.bin",
+  base: "ggml-base.bin",
+  small: "ggml-small.bin",
+  medium: "ggml-medium.bin",
+  large: "ggml-large-v3.bin",
+};
+
+// User-level cache, independent of how the CLI itself was installed (local
+// clone, global npm install, or a one-off `npx` tarball run) -- unlike the
+// previous nodejs-whisper-based design, model storage is no longer tied to
+// a dependency's own node_modules folder.
+const MODEL_DIR = path.join(os.homedir(), ".cache", "at-field", "whisper-models");
+
+function modelPathFor(model: string): string {
+  const filename = MODEL_FILENAMES[model as WhisperModelName];
+  if (!filename) {
+    throw new Error(`Unknown whisper model "${model}". Valid: ${Object.keys(MODEL_FILENAMES).join(", ")}`);
+  }
+  return path.join(MODEL_DIR, filename);
+}
 
 /**
  * Checks whether the given Whisper model's weights are already downloaded
- * locally. Mirrors nodejs-whisper's own autoDownloadModel() existence check
- * so the CLI can decide whether to show the first-run download-size confirm
- * *before* invoking transcription.
+ * locally, so the CLI can decide whether to show the first-run
+ * download-size confirm *before* invoking transcription.
  */
 export async function isModelCached(model: string): Promise<boolean> {
-  const filename = MODEL_OBJECT[model as WhisperModelName];
-  if (!filename) {
-    throw new Error(
-      `Unknown whisper model "${model}". Valid: ${Object.keys(MODEL_OBJECT).join(", ")}`,
-    );
-  }
-  const modelPath = path.join(WHISPER_CPP_PATH, "models", filename);
-  return fs.existsSync(modelPath);
+  return fs.existsSync(modelPathFor(model));
 }
 
-// Matches whisper.cpp's default stdout segment format, e.g.:
-// [00:00:00.000 --> 00:00:04.320]   some segment text
-const SEGMENT_LINE = /^\[(\d{2}):(\d{2}):(\d{2})\.(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})\.(\d{3})\][ \t]*(.*)$/;
-
-function timeToSeconds(h: string, m: string, s: string, ms: string): number {
-  return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000;
+function downloadFile(url: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(destPath);
+    https
+      .get(url, (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          file.close();
+          fs.unlinkSync(destPath);
+          downloadFile(res.headers.location, destPath).then(resolve, reject);
+          return;
+        }
+        if (res.statusCode !== 200) {
+          file.close();
+          fs.unlinkSync(destPath);
+          reject(new Error(`Failed to download model (HTTP ${res.statusCode}) from ${url}`));
+          return;
+        }
+        res.pipe(file);
+        file.on("finish", () => file.close(() => resolve()));
+      })
+      .on("error", (err) => {
+        file.close();
+        if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        reject(err);
+      });
+  });
 }
 
 /**
- * Parses whisper.cpp's default timestamped stdout into segments. This is
- * the CLI's own default output format (no special flag needed) -- avoids
- * depending on a separate JSON/SRT output file.
- *
- * Matched line-by-line rather than with a single multi-line regex: a
- * trailing `\s*` before the text capture will otherwise cross the newline
- * into the next line (caught by a regression test) since `\s` matches
- * line breaks.
+ * Downloads the given model's weights if not already cached. Idempotent --
+ * safe to call unconditionally from transcribe(); the caller's own
+ * isModelCached() check (in cli.ts) is only there to decide whether to show
+ * the first-run confirm prompt before this actually runs.
  */
-export function parseWhisperOutput(stdout: string): Pick<TranscriptResult, "text" | "segments"> {
-  const segments: TranscriptSegment[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const match = SEGMENT_LINE.exec(line.trim());
-    if (!match) continue;
-    const [, h1, m1, s1, ms1, h2, m2, s2, ms2, text] = match;
-    const trimmed = text.trim();
-    if (!trimmed) continue;
-    segments.push({
-      start: timeToSeconds(h1, m1, s1, ms1),
-      end: timeToSeconds(h2, m2, s2, ms2),
-      text: trimmed,
-    });
-  }
-  return {
-    text: segments.map((s) => s.text).join(" "),
-    segments,
-  };
+async function ensureModelDownloaded(model: string): Promise<void> {
+  const destPath = modelPathFor(model);
+  if (fs.existsSync(destPath)) return;
+  fs.mkdirSync(MODEL_DIR, { recursive: true });
+  const url = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${MODEL_FILENAMES[model as WhisperModelName]}`;
+  await downloadFile(url, destPath);
 }
 
 /**
- * Converts the input audio (any format nodejs-whisper/ffmpeg can read) and
- * runs local Whisper inference. Model download (if not cached) is delegated
- * to nodejs-whisper via autoDownloadModelName -- call isModelCached() first
- * if a confirm prompt is required before downloading.
+ * Transcribes the input audio with a local Whisper model via
+ * @fugood/whisper.node (prebuilt native whisper.cpp bindings -- no local
+ * compile step, unlike the nodejs-whisper backend this replaced). Model
+ * download (if not cached) happens here; call isModelCached() first if a
+ * confirm prompt is required before downloading.
  */
 export async function transcribe(
   options: Pick<CliOptions, "audioPath" | "whisperModel" | "language">,
@@ -80,48 +100,47 @@ export async function transcribe(
     throw new Error(`Audio file not found: ${options.audioPath}`);
   }
 
+  await ensureModelDownloaded(model);
+
   const requestedLanguage = options.language ?? "auto";
 
-  // whisper.cpp writes its auto-detected-language line to stderr, which
-  // nodejs-whisper only exposes via a custom logger's debug() (its own
-  // returned stdout never contains it). Capture that here so
-  // TranscriptResult.language reflects what Whisper actually detected in
-  // auto mode, not just the string we requested.
-  const capturedLogLines: string[] = [];
-  const captureLogger = {
-    debug: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
-    log: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
-    error: (...args: unknown[]) => capturedLogLines.push(args.map(String).join(" ")),
-  };
+  let context;
+  try {
+    context = await initWhisper({ filePath: modelPathFor(model), useGpu: false });
+    // whisper.cpp's bundled `miniaudio` decoder reads mp3/wav/flac/etc.
+    // directly -- no ffmpeg pre-conversion step needed here (ffmpeg is
+    // still used elsewhere, for --start/--end/--max-duration trimming).
+    const { promise } = context.transcribeFile(options.audioPath, {
+      // Omitting `language` (rather than passing "auto") is what actually
+      // triggers whisper.cpp's own real language auto-detection -- see
+      // WhisperContext.cpp: an empty/unset language leaves whisper.cpp's
+      // own default in place, which is auto-detect.
+      language: requestedLanguage === "auto" ? undefined : requestedLanguage,
+      maxThreads: os.cpus().length,
+    });
+    const result = await promise;
 
-  // No outputInText/outputInJson flag set: whisper.cpp's default stdout
-  // already includes per-segment timestamps, which parseWhisperOutput()
-  // reads directly -- avoids managing a second output file.
-  const stdout = await nodewhisper(options.audioPath, {
-    modelName: model,
-    autoDownloadModelName: model,
-    removeWavFileAfterTranscription: true,
-    logger: captureLogger,
-    whisperOptions: {
-      language: requestedLanguage,
-    },
-  });
+    const segments: TranscriptSegment[] = result.segments.map((s) => ({
+      start: s.t0 / 1000,
+      end: s.t1 / 1000,
+      text: s.text.trim(),
+    }));
 
-  const { text, segments } = parseWhisperOutput(stdout);
-  const detectedLanguage =
-    requestedLanguage === "auto"
-      ? (extractWhisperDetectedLanguage(capturedLogLines) ?? "auto")
-      : requestedLanguage;
-
-  return {
-    text,
-    segments,
-    source: "model",
-    language: detectedLanguage,
-    // Duration-cap / segment-range trimming both happen before transcribe()
-    // is called (see src/audio.ts + cli.ts) -- transcribe() itself is
-    // unaware of either. The caller attaches the real values afterward.
-    durationCap: null,
-    segmentRange: null,
-  };
+    return {
+      text: result.result.trim(),
+      segments,
+      source: "model",
+      // Real detected/used language, straight from whisper.cpp's own
+      // output -- no more scraping stderr log lines for it.
+      language: result.language ?? requestedLanguage,
+      // Duration-cap / segment-range trimming both happen before
+      // transcribe() is called (see src/audio.ts + cli.ts) -- transcribe()
+      // itself is unaware of either. The caller attaches the real values
+      // afterward.
+      durationCap: null,
+      segmentRange: null,
+    };
+  } finally {
+    await context?.release();
+  }
 }

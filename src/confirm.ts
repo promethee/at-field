@@ -14,12 +14,13 @@ export async function confirm(message: string, defaultYes = false): Promise<bool
   return answer === "y" || answer === "yes";
 }
 
-// Approximate ggml model file sizes, for the download-size confirm message.
-// Not exact — informational only.
+// Approximate ggml model file sizes (ggerganov/whisper.cpp on Hugging
+// Face), for the download-size confirm message. Not exact — informational
+// only. "large" is the current large-v3 release.
 export const APPROX_MODEL_SIZE_MB: Record<string, number> = {
-  tiny: 75,
-  base: 142,
-  small: 466,
-  medium: 1500,
-  large: 2900,
+  tiny: 74,
+  base: 141,
+  small: 465,
+  medium: 1462,
+  large: 2952,
 };

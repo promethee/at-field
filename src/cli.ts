@@ -33,12 +33,9 @@ program
     String(DEFAULT_OBVIOUSNESS_STEPS),
   )
   .action(async (audioArg: string, opts: Record<string, string>) => {
-    // Resolved to absolute immediately: nodejs-whisper's whisper-cli
-    // invocation cd's into its own install directory before running, so a
-    // relative path (e.g. typed from the user's cwd) silently resolves
-    // against the wrong directory once whisper.cpp's own wav conversion
-    // runs, producing a confusing "input file not found" from whisper-cli
-    // itself rather than a clear error from this codebase.
+    // Resolved to absolute immediately -- output paths, transcript reuse,
+    // and range/duration trimming all key off this same value, so it needs
+    // to mean the same thing regardless of the user's cwd.
     const audio = path.resolve(audioArg);
 
     if (!opts.theme) {

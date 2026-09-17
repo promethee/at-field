@@ -56,7 +56,7 @@ Not a summarizer. Not a research workspace — no saved projects, no cross-run m
 
 ## Known limitations
 
-- `--theme` and the audio must be in the same language — a mismatch is detected and the run stops before producing a misleading result.
+- `--theme` and the audio must be in the same language — a mismatch is detected and the run stops before producing a misleading result. Short or unusual `--theme` phrases can occasionally be confidently *mis*detected as a different language (a `franc-min` limitation, not just low-confidence "ambiguous" cases) — if a run stops on a language mismatch you believe is wrong, set `--language` explicitly to bypass detection.
 - Fewer than 8 terms in the expanded lexical field triggers a thin-field notice — results may look more like keyword-spotting than a broad thematic read.
 
 ## License

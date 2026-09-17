@@ -34,20 +34,3 @@ export function checkLanguageMatch(theme: string, audioLanguageCode: string): La
   if (!confident) return "ambiguous";
   return code === audioLanguageCode ? "match" : "mismatch";
 }
-
-// whisper.cpp writes this line to stderr on auto-detection, e.g.:
-// "whisper_full_with_state: auto-detected language: en (p = 0.988642)"
-const WHISPER_AUTO_DETECT_LINE = /auto-detected language:\s*([a-z]{2,3})/i;
-
-/**
- * Scans captured whisper.cpp log lines (stderr, routed through a custom
- * logger -- see transcribe.ts) for the auto-detected-language line. Only
- * present when Whisper was run in auto-detect mode.
- */
-export function extractWhisperDetectedLanguage(logLines: string[]): string | null {
-  for (const line of logLines) {
-    const match = WHISPER_AUTO_DETECT_LINE.exec(line);
-    if (match) return match[1].toLowerCase();
-  }
-  return null;
-}

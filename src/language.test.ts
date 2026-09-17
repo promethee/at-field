@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { detectLanguageCode, checkLanguageMatch, extractWhisperDetectedLanguage } from "./language.js";
+import { detectLanguageCode, checkLanguageMatch } from "./language.js";
 
 test("detectLanguageCode confidently identifies a clear English sentence", () => {
   const result = detectLanguageCode("the quick brown fox jumps over the lazy dog");
@@ -33,21 +33,4 @@ test("checkLanguageMatch returns mismatch when languages clearly disagree", () =
 test("checkLanguageMatch returns ambiguous for an undetectable short theme", () => {
   const result = checkLanguageMatch("animals", "en");
   assert.equal(result, "ambiguous");
-});
-
-test("extractWhisperDetectedLanguage parses the real whisper.cpp log line format", () => {
-  const lines = [
-    "whisper_init_from_file_with_params_no_state: loading model",
-    "whisper_full_with_state: auto-detected language: en (p = 0.988642)",
-    "some other line",
-  ];
-  assert.equal(extractWhisperDetectedLanguage(lines), "en");
-});
-
-test("extractWhisperDetectedLanguage returns null when no such line is present", () => {
-  assert.equal(extractWhisperDetectedLanguage(["nothing relevant here"]), null);
-});
-
-test("extractWhisperDetectedLanguage is case-insensitive on the prefix", () => {
-  assert.equal(extractWhisperDetectedLanguage(["AUTO-DETECTED LANGUAGE: fr (p = 0.9)"]), "fr");
 });
