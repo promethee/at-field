@@ -289,8 +289,10 @@ program
           `error: --theme "${options.theme}" appears to be in a different language than the audio ` +
             `(detected: ${transcript.language}). Lexical matching relies on --theme and the transcript ` +
             `being in the same language. The transcript was already written to ${outputPaths.transcriptPath} ` +
-            `and will be offered for reuse on your next run with this audio+theme. Rerun with --theme ` +
-            `written in the audio's language, or set --language explicitly.`,
+            `and will be offered for reuse on your next run with this audio+theme. Short theme phrases ` +
+            `are sometimes misdetected -- try a longer phrase or a synonym, or rerun with ` +
+            `--language=${transcript.language} to get a chance to confirm past a false positive instead ` +
+            `of this hard stop.`,
         );
         process.exitCode = 1;
         return;
