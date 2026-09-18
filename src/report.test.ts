@@ -10,7 +10,7 @@ function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
       language: "en",
       segments: [],
     },
-    field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false, gpuUsed: null },
+    field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false },
     obviousnessScore: 0.2,
     matches: [
       { term: "paw", count: 3 },
@@ -69,7 +69,7 @@ test("renderMarkdown respects a custom obviousnessSteps option", () => {
 });
 
 test("renderMarkdown includes a thin-field disclaimer only when isThin is true", () => {
-  const thin = renderMarkdown(baseResult({ field: { theme: "dogs", terms: ["paw"], isThin: true, gpuUsed: null } }));
+  const thin = renderMarkdown(baseResult({ field: { theme: "dogs", terms: ["paw"], isThin: true } }));
   assert.match(thin, /Thin field/);
 
   const notThin = renderMarkdown(baseResult());
@@ -145,7 +145,7 @@ test("renderMarkdown shows a no-occurrences message when segmentHits is empty", 
 });
 
 test("renderMarkdown shows a no-terms message when the field is empty", () => {
-  const md = renderMarkdown(baseResult({ field: { theme: "dogs", terms: [], isThin: true, gpuUsed: null } }));
+  const md = renderMarkdown(baseResult({ field: { theme: "dogs", terms: [], isThin: true } }));
   assert.match(md, /no terms — static wordlist was empty or theme expansion returned none/);
 });
 

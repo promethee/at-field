@@ -8,7 +8,7 @@ function transcript(text: string, segments: TranscriptSegment[] = []): Transcrip
 }
 
 function field(theme: string, terms: string[]): LexicalFieldResult {
-  return { theme, terms, isThin: terms.length < 8, gpuUsed: null };
+  return { theme, terms, isThin: terms.length < 8 };
 }
 
 test("high obviousness: theme word dominates, few related terms", async () => {

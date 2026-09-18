@@ -1,19 +1,43 @@
 import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { getLlama, LlamaChatSession, resolveModelFile } from "node-llama-cpp";
 import type { LexicalFieldResult } from "./types.js";
 
 // Small instruct model, good enough for a bounded JSON-list generation task.
-// "hf:" URI is resolved/downloaded by node-llama-cpp on first use.
-const DEFAULT_MODEL_URI = "hf:Qwen/Qwen2.5-0.5B-Instruct-GGUF/qwen2.5-0.5b-instruct-q4_k_m.gguf";
+// Pulled and run by the user's own local Ollama install -- see README.
+const DEFAULT_MODEL = "qwen2.5:0.5b";
 
-const MODELS_DIR = path.join(os.homedir(), ".cache", "at-field", "models");
+// OLLAMA_HOST is Ollama's own env var convention, but its value isn't
+// guaranteed to be a full URL -- e.g. found set to bare "0.0.0.0" (no
+// scheme, no port) in real testing, which crashed url parsing instead of
+// producing the clean "can't reach Ollama" error below. Normalize instead
+// of trusting it as-is.
+function resolveOllamaHost(): string {
+  const raw = process.env.OLLAMA_HOST?.trim();
+  if (!raw) return "http://localhost:11434";
+  const withScheme = /^https?:\/\//.test(raw) ? raw : `http://${raw}`;
+  try {
+    const url = new URL(withScheme);
+    if (!url.port) url.port = "11434";
+    return url.origin;
+  } catch {
+    return "http://localhost:11434";
+  }
+}
+
+const OLLAMA_HOST = resolveOllamaHost();
 
 // Below this term count, the expanded field is flagged as thin (see
 // INTENT.md — likely indicates a narrow subject rather than a broad theme,
 // or a prompt/model limitation). Heuristic, not exact.
 const THIN_FIELD_THRESHOLD = 8;
+
+// Hard ceiling on theme-expansion generation, passed as Ollama's
+// `num_predict`. Real testing of the previous in-process node-llama-cpp
+// backend found generation can otherwise run unbounded -- the schema's
+// maxItems: 40 constrains the JSON *shape* but not how many tokens the
+// model is allowed to spend getting there. 40 short terms in JSON is at
+// most a few hundred tokens, so this leaves headroom without allowing a
+// runaway.
+const MAX_EXPANSION_TOKENS = 1024;
 
 const FIELD_SCHEMA = {
   type: "object",
@@ -29,64 +53,70 @@ const FIELD_SCHEMA = {
 } as const;
 
 /**
- * Checks whether the default local theme-expansion model is already
- * downloaded, without loading or running it.
- */
-export async function isThemeModelCached(modelUri: string = DEFAULT_MODEL_URI): Promise<boolean> {
-  try {
-    // download: false -- resolves an existing local file only, never fetches.
-    await resolveModelFile(modelUri, { directory: MODELS_DIR, download: false });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Expands a user-supplied theme into a lexical field using a local LLM
- * (node-llama-cpp, in-process, no external daemon). Output is constrained
- * to a JSON schema so parsing never fails on free-text drift.
+ * Expands a user-supplied theme into a lexical field using a local Ollama
+ * server (a separately-installed, separately-maintained binary -- not an
+ * in-process native npm binding). Output is constrained to a JSON schema
+ * via Ollama's structured-output support, so parsing never fails on
+ * free-text drift.
  *
- * CPU-only, deliberately. getLlama() defaults to `gpu: "auto"`, trying a
- * GPU backend itself before falling back to CPU -- explicitly disabled
- * here (`gpu: false`) after the equivalent auto-GPU-then-fallback attempt
- * in transcribe() locked up a real test machine hard enough to need a
- * full reset. Not reintroduced until that failure mode is understood, out
- * of caution even though this stalling incident wasn't confirmed to be
- * this code path specifically. See INTENT.md.
+ * Previously used node-llama-cpp in-process. Dropped after it joined
+ * nodejs-whisper and @fugood/whisper.node as a third native ML binding to
+ * cause a severe failure in this project (real-hardware testing found
+ * generation could stall indefinitely on CPU with no progress at all) --
+ * see INTENT.md for the full pattern across all three.
  */
-export async function expandTheme(
-  theme: string,
-  modelUri: string = DEFAULT_MODEL_URI,
-): Promise<LexicalFieldResult> {
-  const llama = await getLlama({ gpu: false });
-  const gpuUsed = llama.gpu;
-  const modelPath = await resolveModelFile(modelUri, { directory: MODELS_DIR });
-  const model = await llama.loadModel({ modelPath });
-  const context = await model.createContext();
-  const session = new LlamaChatSession({ contextSequence: context.getSequence() });
-
+export async function expandTheme(theme: string, model: string = DEFAULT_MODEL): Promise<LexicalFieldResult> {
   const prompt =
     `List the lexical field of the theme/topic "${theme}": words and short phrases ` +
     `commonly associated with it (not just synonyms of the theme word itself). ` +
     `Return 15-30 distinct terms if the theme is broad enough to support that many; ` +
     `fewer is fine for a genuinely narrow theme.`;
 
-  const response = await session.prompt(prompt, {
-    grammar: await llama.createGrammarForJsonSchema(FIELD_SCHEMA),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_HOST}/api/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        prompt,
+        format: FIELD_SCHEMA,
+        stream: false,
+        options: { num_predict: MAX_EXPANSION_TOKENS },
+      }),
+    });
+  } catch (err) {
+    throw new Error(
+      `Could not reach a local Ollama server at ${OLLAMA_HOST}. Install Ollama (https://ollama.com), run ` +
+        `\`ollama pull ${model}\`, and make sure \`ollama serve\` is running. (${(err as Error).message})`,
+    );
+  }
 
-  const parsed = JSON.parse(response) as { terms: string[] };
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    if (res.status === 404) {
+      throw new Error(`Ollama model "${model}" isn't pulled yet. Run: ollama pull ${model}`);
+    }
+    throw new Error(`Ollama request failed (${res.status}): ${body || res.statusText}`);
+  }
+
+  const data = (await res.json()) as { response: string };
+
+  let parsed: { terms: string[] };
+  try {
+    parsed = JSON.parse(data.response) as { terms: string[] };
+  } catch {
+    throw new Error(
+      `Theme expansion produced incomplete output (likely hit the ${MAX_EXPANSION_TOKENS}-token cap before ` +
+        `finishing). Try a narrower theme, or retry.`,
+    );
+  }
   const terms = [...new Set(parsed.terms.map((t) => t.trim()).filter(Boolean))];
-
-  await context.dispose();
-  await model.dispose();
 
   return {
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
-    gpuUsed,
   };
 }
 
@@ -114,6 +144,5 @@ export async function loadLexicFile(filePath: string, theme: string): Promise<Le
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
-    gpuUsed: null,
   };
 }

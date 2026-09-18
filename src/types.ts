@@ -25,12 +25,6 @@ export interface LexicalFieldResult {
   terms: string[];
   /** true if the expanded field is unusually small (see thin-field disclosure) */
   isThin: boolean;
-  /**
-   * Which GPU backend node-llama-cpp used for theme expansion ("metal" |
-   * "cuda" | "vulkan"), false if it fell back to CPU, null for the
-   * --lexic path (no LLM involved at all).
-   */
-  gpuUsed: "metal" | "cuda" | "vulkan" | false | null;
 }
 
 export interface SegmentHit {

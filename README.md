@@ -14,9 +14,10 @@ Works best on a theme that *isn't* the transcript's obvious subject — e.g. "ec
 
 ## Install
 
-Requires Node.js 20+.
+Requires Node.js 20+ and [Ollama](https://ollama.com) running locally (theme expansion uses it to build the lexical field — nothing bundled, no API key).
 
 ```bash
+ollama pull qwen2.5:0.5b
 git clone https://github.com/promethee/at-field.git
 cd at-field
 npm install
@@ -24,7 +25,7 @@ npm run build
 npm link
 ```
 
-First run downloads a small local LLM for theme expansion (used to build the lexical field); you'll be asked to confirm.
+`at-field` talks to Ollama's default local server (`http://localhost:11434`); override with the `OLLAMA_HOST` env var if yours runs elsewhere.
 
 ## Usage
 
@@ -45,7 +46,7 @@ Each run writes a Markdown report next to the input transcript.
 
 ## Philosophy
 
-Every limitation (transcript source, thin field, missing timestamps) is printed, never gated behind a confirmation. Theme expansion runs locally — no API calls, no per-run cost. Output is Markdown.
+Every limitation (transcript source, thin field, missing timestamps) is printed, never gated behind a confirmation. Theme expansion runs through a local Ollama server — no cloud API calls, no per-run cost. Output is Markdown.
 
 ## What this isn't
 

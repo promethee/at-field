@@ -21,8 +21,7 @@
   "dependencies": {
     "commander": "^12.1.0",
     "franc-min": "^6.2.0",
-    "iso-639-3": "^3.0.1",
-    "node-llama-cpp": "^3.21.1"
+    "iso-639-3": "^3.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

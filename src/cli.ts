@@ -107,12 +107,6 @@ program
       ? await loadLexicFile(options.lexic, options.theme!)
       : await expandTheme(options.theme!);
 
-    if (field.gpuUsed !== null) {
-      console.log(
-        `Theme expansion ran on ${field.gpuUsed ? `GPU (${field.gpuUsed})` : "CPU"} (node-llama-cpp's own choice).`,
-      );
-    }
-
     if (field.isThin) {
       console.log(
         `Thin-field disclaimer: only ${field.terms.length} term(s) found for "${field.theme}" ` +
