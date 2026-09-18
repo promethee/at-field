@@ -1,4 +1,4 @@
-import type { AnalysisResult } from "./types.js";
+import type { AnalysisResult, TranscriptSegment } from "./types.js";
 
 export const DEFAULT_OBVIOUSNESS_STEPS = 2;
 
@@ -54,6 +54,17 @@ export interface RenderOptions {
   obviousnessSteps?: number;
   /** filename of the sibling transcript file, if one was written to disk */
   transcriptFileName?: string;
+}
+
+/**
+ * Renders the sibling .transcript.txt file's contents: one line per
+ * Whisper segment, timestamped. A single space-joined paragraph (the
+ * previous format) reads fine for an 11-second test clip but becomes
+ * unreadable for anything podcast-length -- timestamps also let a match
+ * from the report's occurrence log be found directly in the transcript.
+ */
+export function renderTranscriptText(segments: TranscriptSegment[]): string {
+  return segments.map((s) => `[${formatTimestamp(s.start)}–${formatTimestamp(s.end)}] ${s.text}`).join("\n");
 }
 
 /**

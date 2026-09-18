@@ -8,7 +8,13 @@ import { transcribe, isModelCached, ensureModelDownloaded } from "./transcribe.j
 import { trimToMaxDuration, trimToRange, parseTimeToSeconds, type RangeTrimResult } from "./audio.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
-import { renderMarkdown, renderTerminalGraphic, formatTimestamp, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
+import {
+  renderMarkdown,
+  renderTerminalGraphic,
+  renderTranscriptText,
+  formatTimestamp,
+  DEFAULT_OBVIOUSNESS_STEPS,
+} from "./report.js";
 import { buildOutputPaths, findExistingTranscript } from "./output.js";
 import { checkLanguageMatch, detectLanguageCode } from "./language.js";
 import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
@@ -264,7 +270,7 @@ program
     // referenced directly in the report instead of being duplicated.
     const outputPaths = buildOutputPaths(audio, options.theme!);
     if (shouldWriteTranscriptFile) {
-      fs.writeFileSync(outputPaths.transcriptPath, transcript.text, "utf-8");
+      fs.writeFileSync(outputPaths.transcriptPath, renderTranscriptText(transcript.segments), "utf-8");
       transcriptFileNameForReport = outputPaths.transcriptFileName;
     }
 

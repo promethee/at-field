@@ -1,6 +1,9 @@
 node_modules/
 dist/
 
+# npm pack output (built for local testing, e.g. npx ./at-field-*.tgz)
+*.tgz
+
 # Editor/OS
 .DS_Store
 .vscode/

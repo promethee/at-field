@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdown, renderTerminalGraphic, computeObviousnessStep } from "./report.js";
+import { renderMarkdown, renderTerminalGraphic, renderTranscriptText, computeObviousnessStep } from "./report.js";
 import type { AnalysisResult } from "./types.js";
 
 function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
@@ -223,4 +223,21 @@ test("renderTerminalGraphic caps bar rows at 10 and notes the remainder", () => 
   const matches = Array.from({ length: 15 }, (_, i) => ({ term: `term${i}`, count: 15 - i }));
   const graphic = renderTerminalGraphic(baseResult({ matches }));
   assert.match(graphic, /and 5 more/);
+});
+
+test("renderTranscriptText formats one timestamped line per segment", () => {
+  const text = renderTranscriptText([
+    { start: 0, end: 2.5, text: "Hello there." },
+    { start: 2.5, end: 5, text: "General Kenobi." },
+  ]);
+  assert.equal(text, "[00:00–00:02] Hello there.\n[00:02–00:05] General Kenobi.");
+});
+
+test("renderTranscriptText formats hour-scale timestamps as HH:MM:SS", () => {
+  const text = renderTranscriptText([{ start: 3723.5, end: 3730, text: "late segment" }]);
+  assert.equal(text, "[01:02:03–01:02:10] late segment");
+});
+
+test("renderTranscriptText returns an empty string for no segments", () => {
+  assert.equal(renderTranscriptText([]), "");
 });
