@@ -87,7 +87,7 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
 
   lines.push("## Disclaimers", "");
   lines.push(
-    `- Transcript quality: local Whisper output (source: \`${transcript.source}\`, language: \`${transcript.language}\`) — accuracy depends on model size and audio quality.`,
+    `- Transcript quality: local Whisper output (source: \`${transcript.source}\`, language: \`${transcript.language}\`${transcript.gpuUsed === null ? "" : `, ${transcript.gpuUsed ? "GPU-accelerated" : "CPU-only"}`}) — accuracy depends on model size and audio quality.`,
   );
   if (transcript.durationCap) {
     const originalMin = (transcript.durationCap.originalSeconds / 60).toFixed(1);

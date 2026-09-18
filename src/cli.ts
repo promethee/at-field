@@ -154,6 +154,7 @@ program
           segments: [],
           durationCap: null,
           segmentRange: null,
+          gpuUsed: null,
         };
         transcriptFileNameForReport = existing.fileName;
         shouldWriteTranscriptFile = false;
@@ -265,8 +266,9 @@ program
         }));
       }
       console.log(
-        `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}) — ` +
-          `accuracy depends on model size and audio quality.`,
+        `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}, ` +
+          `${transcript.gpuUsed ? "GPU-accelerated" : "CPU-only"}) — accuracy depends on model size and ` +
+          `audio quality.`,
       );
     }
 

@@ -44,6 +44,11 @@ export interface TranscriptResult {
   durationCap: DurationCapInfo | null;
   /** null when no --start/--end range was requested */
   segmentRange: SegmentRangeInfo | null;
+  /**
+   * true if GPU acceleration was used, false if it was attempted and fell
+   * back to CPU, null for a reused transcript (no hardware info saved).
+   */
+  gpuUsed: boolean | null;
 }
 
 export interface LexicalFieldResult {

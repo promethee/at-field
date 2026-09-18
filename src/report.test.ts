@@ -12,6 +12,7 @@ function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
       segments: [],
       durationCap: null,
       segmentRange: null,
+      gpuUsed: null,
     },
     field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false },
     obviousnessScore: 0.2,
@@ -100,6 +101,7 @@ test("renderMarkdown never embeds the full transcript text", () => {
         segments: [],
         durationCap: null,
         segmentRange: null,
+        gpuUsed: null,
       },
     }),
   );
@@ -121,6 +123,7 @@ test("renderMarkdown includes a duration-cap disclaimer when durationCap is set"
         segments: [],
         durationCap: { originalSeconds: 3600, cappedSeconds: 600 },
         segmentRange: null,
+        gpuUsed: null,
       },
     }),
   );
@@ -130,6 +133,45 @@ test("renderMarkdown includes a duration-cap disclaimer when durationCap is set"
 test("renderMarkdown omits the duration-cap disclaimer when durationCap is null", () => {
   const md = renderMarkdown(baseResult());
   assert.doesNotMatch(md, /Duration cap:/);
+});
+
+test("renderMarkdown notes GPU acceleration in the transcript-quality line when gpuUsed is true", () => {
+  const md = renderMarkdown(
+    baseResult({
+      transcript: {
+        text: "paw leash",
+        source: "model",
+        language: "en",
+        segments: [],
+        durationCap: null,
+        segmentRange: null,
+        gpuUsed: true,
+      },
+    }),
+  );
+  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`, GPU-accelerated\)/);
+});
+
+test("renderMarkdown notes CPU-only in the transcript-quality line when gpuUsed is false", () => {
+  const md = renderMarkdown(
+    baseResult({
+      transcript: {
+        text: "paw leash",
+        source: "model",
+        language: "en",
+        segments: [],
+        durationCap: null,
+        segmentRange: null,
+        gpuUsed: false,
+      },
+    }),
+  );
+  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`, CPU-only\)/);
+});
+
+test("renderMarkdown omits the GPU/CPU note entirely when gpuUsed is null (reused transcript)", () => {
+  const md = renderMarkdown(baseResult());
+  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`\) —/);
 });
 
 test("renderMarkdown includes a segment-range disclaimer with an explicit end when segmentRange is set", () => {
@@ -142,6 +184,7 @@ test("renderMarkdown includes a segment-range disclaimer with an explicit end wh
         segments: [],
         durationCap: null,
         segmentRange: { startSeconds: 90, endSeconds: 330 },
+        gpuUsed: null,
       },
     }),
   );
@@ -158,6 +201,7 @@ test("renderMarkdown shows 'end of audio' when segmentRange has no explicit end"
         segments: [],
         durationCap: null,
         segmentRange: { startSeconds: 90, endSeconds: null },
+        gpuUsed: null,
       },
     }),
   );
