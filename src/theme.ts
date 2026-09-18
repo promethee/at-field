@@ -46,12 +46,20 @@ export async function isThemeModelCached(modelUri: string = DEFAULT_MODEL_URI): 
  * Expands a user-supplied theme into a lexical field using a local LLM
  * (node-llama-cpp, in-process, no external daemon). Output is constrained
  * to a JSON schema so parsing never fails on free-text drift.
+ *
+ * GPU acceleration: node-llama-cpp's getLlama() already defaults to
+ * `gpu: "auto"` -- it tries GPU backends itself and falls back to CPU
+ * automatically, no extra code needed here (unlike @fugood/whisper.node,
+ * which required wiring that up manually). `llama.gpu` after it resolves
+ * reports which backend actually ended up used, surfaced to the caller so
+ * it can be disclosed the same way transcribe()'s gpuUsed is.
  */
 export async function expandTheme(
   theme: string,
   modelUri: string = DEFAULT_MODEL_URI,
 ): Promise<LexicalFieldResult> {
   const llama = await getLlama();
+  const gpuUsed = llama.gpu;
   const modelPath = await resolveModelFile(modelUri, { directory: MODELS_DIR });
   const model = await llama.loadModel({ modelPath });
   const context = await model.createContext();
@@ -77,6 +85,7 @@ export async function expandTheme(
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
+    gpuUsed,
   };
 }
 
@@ -104,5 +113,6 @@ export async function loadLexicFile(filePath: string, theme: string): Promise<Le
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
+    gpuUsed: null,
   };
 }
