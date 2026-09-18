@@ -1,4 +1,6 @@
 import fs from "node:fs";
+import { spawn } from "node:child_process";
+import { confirm } from "./confirm.js";
 import type { LexicalFieldResult } from "./types.js";
 
 // Small instruct model, good enough for a bounded JSON-list generation task.
@@ -53,6 +55,56 @@ const FIELD_SCHEMA = {
 } as const;
 
 /**
+ * Checks whether `model` is already pulled in the local Ollama install,
+ * and offers to pull it (via the `ollama` CLI itself, not reimplemented
+ * download logic) if not. Throws with actionable next steps for every
+ * failure mode: server unreachable, user declines, or the pull itself
+ * fails (e.g. `ollama` not on PATH).
+ */
+async function ensureModelPulled(model: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await fetch(`${OLLAMA_HOST}/api/tags`);
+  } catch (err) {
+    throw new Error(
+      `Could not reach a local Ollama server at ${OLLAMA_HOST}. Install Ollama (https://ollama.com) and make ` +
+        `sure \`ollama serve\` is running. (${(err as Error).message})`,
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`Ollama request failed (${res.status}): ${res.statusText}`);
+  }
+
+  const data = (await res.json()) as { models?: Array<{ name: string; model: string }> };
+  const known = new Set((data.models ?? []).flatMap((m) => [m.name, m.model]));
+  const wantsLatest = !model.includes(":");
+  if (known.has(model) || (wantsLatest && known.has(`${model}:latest`))) {
+    return;
+  }
+
+  const proceed = await confirm(`Model "${model}" isn't pulled in Ollama yet. Pull it now?`, true);
+  if (!proceed) {
+    throw new Error(`Aborted: run \`ollama pull ${model}\` yourself, then retry.`);
+  }
+
+  console.log(`Pulling "${model}" via Ollama...`);
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("ollama", ["pull", model], { stdio: "inherit" });
+    child.on("error", (err) => {
+      reject(
+        new Error(
+          `Could not run \`ollama pull ${model}\` (is \`ollama\` on your PATH?). Pull it manually and retry. (${err.message})`,
+        ),
+      );
+    });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`\`ollama pull ${model}\` exited with code ${code}. Pull it manually and retry.`));
+    });
+  });
+}
+
+/**
  * Expands a user-supplied theme into a lexical field using a local Ollama
  * server (a separately-installed, separately-maintained binary -- not an
  * in-process native npm binding). Output is constrained to a JSON schema
@@ -66,6 +118,8 @@ const FIELD_SCHEMA = {
  * see INTENT.md for the full pattern across all three.
  */
 export async function expandTheme(theme: string, model: string = DEFAULT_MODEL): Promise<LexicalFieldResult> {
+  await ensureModelPulled(model);
+
   const prompt =
     `List the lexical field of the theme/topic "${theme}": words and short phrases ` +
     `commonly associated with it (not just synonyms of the theme word itself). ` +
