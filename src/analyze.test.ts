@@ -4,7 +4,7 @@ import { analyze } from "./analyze.js";
 import type { LexicalFieldResult, TranscriptResult, TranscriptSegment } from "./types.js";
 
 function transcript(text: string, segments: TranscriptSegment[] = []): TranscriptResult {
-  return { text, source: "model", language: "en", segments, durationCap: null, segmentRange: null, gpuUsed: null };
+  return { text, language: "en", segments };
 }
 
 function field(theme: string, terms: string[]): LexicalFieldResult {

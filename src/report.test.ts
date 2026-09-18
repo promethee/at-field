@@ -1,18 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdown, renderTerminalGraphic, renderTranscriptText, computeObviousnessStep } from "./report.js";
+import { renderMarkdown, renderTerminalGraphic, computeObviousnessStep } from "./report.js";
 import type { AnalysisResult } from "./types.js";
 
 function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
   return {
     transcript: {
       text: "paw leash",
-      source: "model",
       language: "en",
       segments: [],
-      durationCap: null,
-      segmentRange: null,
-      gpuUsed: null,
     },
     field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false, gpuUsed: null },
     obviousnessScore: 0.2,
@@ -96,12 +92,8 @@ test("renderMarkdown never embeds the full transcript text", () => {
     baseResult({
       transcript: {
         text: "UNIQUE_MARKER_SHOULD_NOT_APPEAR",
-        source: "model",
         language: "en",
         segments: [],
-        durationCap: null,
-        segmentRange: null,
-        gpuUsed: null,
       },
     }),
   );
@@ -113,114 +105,33 @@ test("renderMarkdown lists the full lexical field", () => {
   assert.match(md, /`paw`, `leash`, `breed`/);
 });
 
-test("renderMarkdown includes a duration-cap disclaimer when durationCap is set", () => {
+test("renderMarkdown includes the transcript's detected language in the source disclaimer", () => {
+  const md = renderMarkdown(baseResult({ transcript: { text: "paw leash", language: "fr", segments: [] } }));
+  assert.match(md, /Transcript source: user-provided \(language: `fr`\)/);
+});
+
+test("renderMarkdown adds a no-timestamps disclaimer when the transcript has no segments", () => {
+  const md = renderMarkdown(baseResult({ transcript: { text: "paw leash", language: "en", segments: [] } }));
+  assert.match(md, /No timestamps: plain-text input has no segment timing/);
+});
+
+test("renderMarkdown omits the no-timestamps disclaimer when segments are present", () => {
   const md = renderMarkdown(
     baseResult({
-      transcript: {
-        text: "paw leash",
-        source: "model",
-        language: "en",
-        segments: [],
-        durationCap: { originalSeconds: 3600, cappedSeconds: 600 },
-        segmentRange: null,
-        gpuUsed: null,
-      },
+      transcript: { text: "paw leash", language: "en", segments: [{ start: 0, end: 2, text: "paw leash" }] },
     }),
   );
-  assert.match(md, /Duration cap: audio was 60\.0 min, trimmed to the first 10\.0 min/);
-});
-
-test("renderMarkdown omits the duration-cap disclaimer when durationCap is null", () => {
-  const md = renderMarkdown(baseResult());
-  assert.doesNotMatch(md, /Duration cap:/);
-});
-
-test("renderMarkdown notes GPU acceleration in the transcript-quality line when gpuUsed is true", () => {
-  const md = renderMarkdown(
-    baseResult({
-      transcript: {
-        text: "paw leash",
-        source: "model",
-        language: "en",
-        segments: [],
-        durationCap: null,
-        segmentRange: null,
-        gpuUsed: true,
-      },
-    }),
-  );
-  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`, GPU-accelerated\)/);
-});
-
-test("renderMarkdown notes CPU-only in the transcript-quality line when gpuUsed is false", () => {
-  const md = renderMarkdown(
-    baseResult({
-      transcript: {
-        text: "paw leash",
-        source: "model",
-        language: "en",
-        segments: [],
-        durationCap: null,
-        segmentRange: null,
-        gpuUsed: false,
-      },
-    }),
-  );
-  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`, CPU-only\)/);
-});
-
-test("renderMarkdown omits the GPU/CPU note entirely when gpuUsed is null (reused transcript)", () => {
-  const md = renderMarkdown(baseResult());
-  assert.match(md, /Transcript quality: local Whisper output \(source: `model`, language: `en`\) —/);
-});
-
-test("renderMarkdown includes a segment-range disclaimer with an explicit end when segmentRange is set", () => {
-  const md = renderMarkdown(
-    baseResult({
-      transcript: {
-        text: "paw leash",
-        source: "model",
-        language: "en",
-        segments: [],
-        durationCap: null,
-        segmentRange: { startSeconds: 90, endSeconds: 330 },
-        gpuUsed: null,
-      },
-    }),
-  );
-  assert.match(md, /Segment range: analyzed 01:30–05:30 only \(--start\/--end\)/);
-});
-
-test("renderMarkdown shows 'end of audio' when segmentRange has no explicit end", () => {
-  const md = renderMarkdown(
-    baseResult({
-      transcript: {
-        text: "paw leash",
-        source: "model",
-        language: "en",
-        segments: [],
-        durationCap: null,
-        segmentRange: { startSeconds: 90, endSeconds: null },
-        gpuUsed: null,
-      },
-    }),
-  );
-  assert.match(md, /Segment range: analyzed 01:30–end of audio only/);
-});
-
-test("renderMarkdown omits the segment-range disclaimer when segmentRange is null", () => {
-  const md = renderMarkdown(baseResult());
-  assert.doesNotMatch(md, /Segment range:/);
+  assert.doesNotMatch(md, /No timestamps:/);
 });
 
 test("renderMarkdown references the real transcript filename when provided", () => {
-  const md = renderMarkdown(baseResult(), { transcriptFileName: "episode.dogs.a1b2c3d4.transcript.txt" });
-  assert.match(md, /See `episode\.dogs\.a1b2c3d4\.transcript\.txt` \(same directory\)/);
+  const md = renderMarkdown(baseResult(), { transcriptFileName: "episode.srt" });
+  assert.match(md, /See `episode\.srt` \(the original input\)/);
 });
 
 test("renderMarkdown falls back to a generic transcript line when no filename is given", () => {
   const md = renderMarkdown(baseResult());
-  assert.match(md, /See the separate transcript file/);
+  assert.match(md, /See the original input transcript/);
 });
 
 test("renderMarkdown shows a no-matches message when matches is empty", () => {
@@ -239,9 +150,7 @@ test("renderMarkdown shows a no-terms message when the field is empty", () => {
 });
 
 test("renderMarkdown formats hour-scale timestamps as HH:MM:SS", () => {
-  const md = renderMarkdown(
-    baseResult({ segmentHits: [{ start: 3723.5, end: 3730, terms: ["paw"] }] }),
-  );
+  const md = renderMarkdown(baseResult({ segmentHits: [{ start: 3723.5, end: 3730, terms: ["paw"] }] }));
   assert.match(md, /\[01:02:03–01:02:10\]: paw/);
 });
 
@@ -267,21 +176,4 @@ test("renderTerminalGraphic caps bar rows at 10 and notes the remainder", () => 
   const matches = Array.from({ length: 15 }, (_, i) => ({ term: `term${i}`, count: 15 - i }));
   const graphic = renderTerminalGraphic(baseResult({ matches }));
   assert.match(graphic, /and 5 more/);
-});
-
-test("renderTranscriptText formats one timestamped line per segment", () => {
-  const text = renderTranscriptText([
-    { start: 0, end: 2.5, text: "Hello there." },
-    { start: 2.5, end: 5, text: "General Kenobi." },
-  ]);
-  assert.equal(text, "[00:00–00:02] Hello there.\n[00:02–00:05] General Kenobi.");
-});
-
-test("renderTranscriptText formats hour-scale timestamps as HH:MM:SS", () => {
-  const text = renderTranscriptText([{ start: 3723.5, end: 3730, text: "late segment" }]);
-  assert.equal(text, "[01:02:03–01:02:10] late segment");
-});
-
-test("renderTranscriptText returns an empty string for no segments", () => {
-  assert.equal(renderTranscriptText([]), "");
 });

@@ -1,4 +1,4 @@
-import type { AnalysisResult, TranscriptSegment } from "./types.js";
+import type { AnalysisResult } from "./types.js";
 
 export const DEFAULT_OBVIOUSNESS_STEPS = 2;
 
@@ -52,19 +52,8 @@ export function formatTimestamp(seconds: number): string {
 
 export interface RenderOptions {
   obviousnessSteps?: number;
-  /** filename of the sibling transcript file, if one was written to disk */
+  /** filename of the original input transcript, for the report to link back to */
   transcriptFileName?: string;
-}
-
-/**
- * Renders the sibling .transcript.txt file's contents: one line per
- * Whisper segment, timestamped. A single space-joined paragraph (the
- * previous format) reads fine for an 11-second test clip but becomes
- * unreadable for anything podcast-length -- timestamps also let a match
- * from the report's occurrence log be found directly in the transcript.
- */
-export function renderTranscriptText(segments: TranscriptSegment[]): string {
-  return segments.map((s) => `[${formatTimestamp(s.start)}–${formatTimestamp(s.end)}] ${s.text}`).join("\n");
 }
 
 /**
@@ -87,21 +76,11 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
 
   lines.push("## Disclaimers", "");
   lines.push(
-    `- Transcript quality: local Whisper output (source: \`${transcript.source}\`, language: \`${transcript.language}\`${transcript.gpuUsed === null ? "" : `, ${transcript.gpuUsed ? "GPU-accelerated" : "CPU-only"}`}) — accuracy depends on model size and audio quality.`,
+    `- Transcript source: user-provided (language: \`${transcript.language}\`) — accuracy depends on whatever tool produced this transcript, not on at-field.`,
   );
-  if (transcript.durationCap) {
-    const originalMin = (transcript.durationCap.originalSeconds / 60).toFixed(1);
-    const cappedMin = (transcript.durationCap.cappedSeconds / 60).toFixed(1);
+  if (transcript.segments.length === 0) {
     lines.push(
-      `- Duration cap: audio was ${originalMin} min, trimmed to the first ${cappedMin} min before transcription. Content beyond this point was not analyzed and is not reflected anywhere in this report.`,
-    );
-  }
-  if (transcript.segmentRange) {
-    const startLabel = formatTimestamp(transcript.segmentRange.startSeconds);
-    const endLabel =
-      transcript.segmentRange.endSeconds !== null ? formatTimestamp(transcript.segmentRange.endSeconds) : "end of audio";
-    lines.push(
-      `- Segment range: analyzed ${startLabel}–${endLabel} only (--start/--end). Content outside this range is not reflected anywhere in this report.`,
+      `- No timestamps: plain-text input has no segment timing, so timestamped occurrences below will be empty. Use \`.srt\`/\`.vtt\` input to keep them.`,
     );
   }
   if (field.isThin) {
@@ -145,8 +124,8 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
   lines.push("## Transcript", "");
   lines.push(
     options.transcriptFileName
-      ? `See \`${options.transcriptFileName}\` (same directory) for the full transcript text.`
-      : "See the separate transcript file for the full text (not embedded in this report).",
+      ? `See \`${options.transcriptFileName}\` (the original input) for the full transcript text.`
+      : "See the original input transcript for the full text (not embedded in this report).",
     "",
   );
 

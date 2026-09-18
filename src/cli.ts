@@ -2,284 +2,95 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Command } from "commander";
-import { PRESETS, resolvePreset, type PresetName } from "./presets.js";
-import type { CliOptions, TranscriptResult } from "./types.js";
-import { transcribe, isModelCached, ensureModelDownloaded } from "./transcribe.js";
-import { trimToMaxDuration, trimToRange, parseTimeToSeconds, type RangeTrimResult } from "./audio.js";
+import type { CliOptions } from "./types.js";
+import { loadTranscriptFile } from "./transcriptInput.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
-import {
-  renderMarkdown,
-  renderTerminalGraphic,
-  renderTranscriptText,
-  formatTimestamp,
-  DEFAULT_OBVIOUSNESS_STEPS,
-} from "./report.js";
-import { buildOutputPaths, findExistingTranscript } from "./output.js";
+import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
+import { buildOutputPaths } from "./output.js";
 import { checkLanguageMatch, detectLanguageCode } from "./language.js";
-import { confirm, APPROX_MODEL_SIZE_MB } from "./confirm.js";
+import { confirm } from "./confirm.js";
 
 const program = new Command();
 
 program
   .name("at-field")
-  .description("Local audio in, theme-crossed lexical field analysis out.")
-  .argument("<audio>", "path to a local audio file")
+  .description("Text-in, theme-crossed lexical field analysis out.")
+  .argument("<transcript>", "path to a transcript file (.srt, .vtt, or plain text)")
   .option("--theme <value>", "theme to expand into a lexical field")
   .option("--lexic <path>", "static wordlist file, overrides dynamic theme expansion")
-  .option("--preset <name>", "fast | balanced | best", "fast")
-  .option("--whisper-model <model>", "tiny | base | small | medium | large (overrides preset)")
-  .option("--max-duration <minutes>", "cap in minutes, 0 = unlimited (overrides preset)")
-  .option("--start <time>", "start of the range to analyze, e.g. 90, 01:30, or 00:01:30 (default: start of audio)")
-  .option("--end <time>", "end of the range to analyze, same format as --start (default: end of audio)")
-  .option("--language <code>", "transcript language -- required, no auto-detect (see README's Known Limitations)")
+  .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
   .option(
     "--obviousness-steps <n>",
     "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
     String(DEFAULT_OBVIOUSNESS_STEPS),
   )
-  .action(async (audioArg: string, opts: Record<string, string>) => {
-    // Resolved to absolute immediately -- output paths, transcript reuse,
-    // and range/duration trimming all key off this same value, so it needs
-    // to mean the same thing regardless of the user's cwd.
-    const audio = path.resolve(audioArg);
+  .action(async (transcriptArg: string, opts: Record<string, string>) => {
+    // Resolved to absolute immediately -- output paths and the report's
+    // filename reference both key off this same value, so it needs to
+    // mean the same thing regardless of the user's cwd.
+    const transcriptPath = path.resolve(transcriptArg);
 
     if (!opts.theme) {
       program.error("error: --theme is required (always required; --lexic only changes term sourcing)");
     }
 
-    // --language is mandatory -- no auto-detect. franc-min (used to detect
-    // --theme's language for the mismatch check below) can confidently
-    // misdetect short/unusual theme phrases as the wrong language; layering
-    // that same unreliable detector onto the audio's language too (the old
-    // "auto" mode) compounded the risk for no real benefit. An explicit,
-    // stated ground truth is more reliable outright -- it also gives
-    // Whisper itself a real language hint instead of relying on its own
-    // auto-detection. See README's Known Limitations for the full reasoning.
-    if (!opts.language) {
-      program.error("error: --language is required, e.g. --language en (no auto-detect -- see README's Known Limitations for why)");
-    }
-
-    const presetName = (opts.preset as PresetName) ?? "fast";
-    const preset = resolvePreset(presetName);
-
-    // --- --start/--end parsing --------------------------------------------
-    // Free, instant validation -- runs before any confirm gates for the same
-    // reason as the explicit --language check below.
-    let startSeconds: number | null = null;
-    let endSeconds: number | null = null;
-    try {
-      if (opts.start) startSeconds = parseTimeToSeconds(opts.start);
-      if (opts.end) endSeconds = parseTimeToSeconds(opts.end);
-    } catch (err) {
-      program.error(`error: ${(err as Error).message}`);
-    }
-    if (startSeconds !== null && endSeconds !== null && endSeconds <= startSeconds) {
-      program.error(`error: --end (${opts.end}) must be after --start (${opts.start})`);
+    if (!fs.existsSync(transcriptPath)) {
+      program.error(`error: transcript file not found: ${transcriptPath}`);
     }
 
     const options: CliOptions = {
-      audioPath: audio,
       theme: opts.theme,
       lexic: opts.lexic,
-      preset: presetName,
-      whisperModel: (opts.whisperModel as CliOptions["whisperModel"]) ?? preset.whisperModel,
-      maxDuration: opts.maxDuration ? Number(opts.maxDuration) : preset.maxDuration,
       language: opts.language,
-      startSeconds,
-      endSeconds,
     };
 
+    const transcript = loadTranscriptFile(transcriptPath);
+
     // --- Language mismatch check ---------------------------------------
-    // Runs first, before any confirm gates: it's a free, instant check that
-    // can invalidate the whole invocation, so it shouldn't happen after the
-    // user's already been asked to confirm a model download. The user
-    // already stated ground truth via --language, so a mismatch is
-    // disclosed and confirmed rather than blocked outright -- franc-min
-    // can confidently misdetect short/unusual --theme phrases (see
-    // INTENT.md), so a hard stop here would sometimes reject valid input.
-    // Ambiguous detection (short --theme strings often are) only warns.
-    const themeLangMatch = checkLanguageMatch(options.theme!, options.language!);
-    if (themeLangMatch === "mismatch") {
-      const themeLang = detectLanguageCode(options.theme!).code;
-      const proceed = await confirm(
-        `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but --language is set ` +
-          `to "${options.language}". Short theme phrases are sometimes misdetected -- try a longer phrase ` +
-          `or a synonym, or continue if this is a false positive. Continue anyway?`,
-      );
-      if (!proceed) {
-        console.log("Aborted.");
-        process.exitCode = 1;
-        return;
-      }
-    } else if (themeLangMatch === "ambiguous") {
-      console.log(
-        `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
-          `to compare against --language=${options.language}. If matches come back empty, this may be why.`,
-      );
-    }
-
-    // --- Implicit transcript-artifact reuse ---------------------------
-    // Checked before any Whisper-related confirm gates/transcription, so
-    // accepting reuse skips their cost entirely -- not just the transcribe
-    // call. No new flag: this reads back a file the tool's own output
-    // convention already produces (see INTENT.md / TODO.md).
-    let transcript: TranscriptResult | null = null;
-    let transcriptFileNameForReport: string | null = null;
-    let shouldWriteTranscriptFile = true;
-
-    const existing = findExistingTranscript(audio, options.theme!);
-    if (existing) {
-      const reuse = await confirm(
-        `Found an existing transcript from a previous run: ${existing.fileName}. ` +
-          `Reuse it instead of re-transcribing? (delete the file to force re-transcription)`,
-        true,
-      );
-      if (reuse) {
-        console.log(
-          `Reusing existing transcript from ${existing.path} — delete it to force re-transcription. ` +
-            `Note: reused transcripts have no saved segment timestamps -- timestamped occurrences will be ` +
-            `empty in this report.`,
-        );
-        if (options.startSeconds !== null || options.endSeconds !== null) {
-          console.log(
-            `Note: --start/--end are ignored when reusing an existing transcript, since transcription itself ` +
-              `is skipped entirely -- delete the transcript file to force a re-transcription that honors them.`,
-          );
-        }
-        transcript = {
-          text: fs.readFileSync(existing.path, "utf-8"),
-          source: "model",
-          language: "unknown",
-          segments: [],
-          durationCap: null,
-          segmentRange: null,
-          gpuUsed: null,
-        };
-        transcriptFileNameForReport = existing.fileName;
-        shouldWriteTranscriptFile = false;
-      }
-    }
-
-    // --- Confirm gates ---------------------------------------------------
-    // Skipped entirely when a transcript was reused above.
-
-    if (!transcript) {
-      // 1. Preset "best" confirm: uncapped duration + heaviest default model.
-      //    Non-blocking philosophy still applies -- this is a one-time cost
-      //    decision (see AGENTS.md), not a "prove you understand" flag.
-      if (preset.requiresUpfrontConfirm) {
-        const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
+    // --language is optional: if given, it's the explicit ground truth;
+    // if omitted, the transcript's own detected language is used instead
+    // -- detected directly from the real, substantial transcript text
+    // (src/transcriptInput.ts), which is far more reliable than the old
+    // design's only option (a short --theme string). Either way, the
+    // weak link is still the *theme*'s own short-string detection, so a
+    // mismatch is disclosed and confirmed rather than blocked outright --
+    // franc-min can confidently misdetect short/unusual theme phrases
+    // (see INTENT.md). "unknown" (couldn't detect and none given) skips
+    // the check entirely -- nothing to compare against.
+    const effectiveLanguage = options.language ?? transcript.language;
+    if (effectiveLanguage !== "unknown") {
+      const match = checkLanguageMatch(options.theme!, effectiveLanguage);
+      if (match === "mismatch") {
+        const themeLang = detectLanguageCode(options.theme!).code;
+        const sourceLabel = options.language ? "is set to" : "was detected as";
         const proceed = await confirm(
-          `--preset best runs uncapped duration with the "${options.whisperModel}" model ` +
-            `(~${approxSize} MB if not already downloaded). This can take a long time on long audio. Continue?`,
+          `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but the transcript ${sourceLabel} ` +
+            `"${effectiveLanguage}". Short theme phrases are sometimes misdetected -- try a longer phrase or a ` +
+            `synonym, or continue if this is a false positive. Continue anyway?`,
         );
         if (!proceed) {
           console.log("Aborted.");
-          process.exitCode = 0;
-          return;
-        }
-      }
-
-      // 2. Model-download confirm: only if the resolved whisper model isn't
-      //    cached yet. Applies regardless of preset.
-      const whisperCached = await isModelCached(options.whisperModel!);
-      if (!whisperCached) {
-        const approxSize = APPROX_MODEL_SIZE_MB[options.whisperModel!] ?? "unknown";
-        const proceed = await confirm(
-          `Whisper model "${options.whisperModel}" (~${approxSize} MB) is not downloaded yet. Download now?`,
-          true,
-        );
-        if (!proceed) {
-          console.log("Aborted — no model downloaded.");
           process.exitCode = 1;
           return;
         }
-        console.log(`Downloading whisper model "${options.whisperModel}"...`);
-      }
-      await ensureModelDownloaded(options.whisperModel!);
-
-      // --- Segment range (--start/--end) ------------------------------
-      // Extracted *before* transcription and before the duration cap, so a
-      // ranged run doesn't pay transcription cost for audio outside the
-      // requested range. Independent of --max-duration: the cap below then
-      // applies to this range's own duration, not the original file's.
-
-      let rangeTrim: RangeTrimResult;
-      try {
-        rangeTrim = await trimToRange(audio, options.startSeconds ?? null, options.endSeconds ?? null);
-      } catch (err) {
-        program.error(`error: ${(err as Error).message}`);
-        return;
-      }
-      if (rangeTrim.trimmed) {
-        const startLabel = formatTimestamp(rangeTrim.range!.startSeconds);
-        const endLabel =
-          rangeTrim.range!.endSeconds !== null ? formatTimestamp(rangeTrim.range!.endSeconds) : "end of audio";
+      } else if (match === "ambiguous") {
         console.log(
-          `Segment range disclaimer: analyzing ${startLabel}–${endLabel} only (--start/--end). ` +
-            `Content outside this range was not analyzed.`,
+          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language to ` +
+            `compare against "${effectiveLanguage}". If matches come back empty, this may be why.`,
         );
       }
-
-      // --- Duration cap ----------------------------------------------------
-      // Trimmed *before* transcription (not after) so a capped run doesn't
-      // pay transcription cost for the discarded portion. --max-duration=0
-      // (or unset via preset) disables this entirely.
-
-      const trim = await trimToMaxDuration(rangeTrim.path, options.maxDuration ?? 0);
-      if (trim.trimmed) {
-        const originalMin = (trim.originalSeconds / 60).toFixed(1);
-        const cappedMin = (trim.cappedSeconds! / 60).toFixed(1);
-        console.log(
-          `Duration cap disclaimer: audio is ${originalMin} min, trimmed to the first ${cappedMin} min ` +
-            `before transcription (--max-duration=${options.maxDuration}; use --max-duration=0 to disable). ` +
-            `Content beyond this point was not analyzed.`,
-        );
-      }
-
-      // --- Transcription -----------------------------------------------
-      // Prints the audio duration actually being transcribed (a known
-      // fact, not a time-to-complete guess) so a long run doesn't look
-      // identical to a stuck one -- see INTENT.md's "stage-transition
-      // terminal disclosure" note.
-
-      const transcribeDurationMin = ((trim.trimmed ? trim.cappedSeconds! : trim.originalSeconds) / 60).toFixed(1);
-      console.log(`Transcribing ${transcribeDurationMin} min of audio with model "${options.whisperModel}"...`);
-      transcript = await transcribe({ ...options, audioPath: trim.path });
-      trim.cleanup();
-      rangeTrim.cleanup();
-      transcript.durationCap = trim.trimmed
-        ? { originalSeconds: trim.originalSeconds, cappedSeconds: trim.cappedSeconds! }
-        : null;
-      transcript.segmentRange = rangeTrim.range;
-      if (rangeTrim.range) {
-        // Whisper's segment timestamps are relative to the extracted clip
-        // (0-based) -- offset them back to the original audio's timeline so
-        // the report's timestamped occurrences remain meaningful absolute
-        // positions, not confusing clip-relative ones.
-        const offset = rangeTrim.range.startSeconds;
-        transcript.segments = transcript.segments.map((s) => ({
-          ...s,
-          start: s.start + offset,
-          end: s.end + offset,
-        }));
-      }
-      console.log(
-        `Transcript quality disclaimer: local Whisper output (source: ${transcript.source}, ` +
-          `${transcript.gpuUsed ? "GPU-accelerated" : "CPU-only"}) — accuracy depends on model size and ` +
-          `audio quality.`,
-      );
     }
 
-    // Output paths are always fresh (new UUID) for the report; the
-    // transcript file is only (re)written when this run actually
-    // transcribed -- a reused transcript keeps its original filename,
-    // referenced directly in the report instead of being duplicated.
-    const outputPaths = buildOutputPaths(audio, options.theme!);
-    if (shouldWriteTranscriptFile) {
-      fs.writeFileSync(outputPaths.transcriptPath, renderTranscriptText(transcript.segments), "utf-8");
-      transcriptFileNameForReport = outputPaths.transcriptFileName;
+    console.log(
+      `Transcript quality disclaimer: user-provided transcript (language: ${effectiveLanguage}) — accuracy ` +
+        `depends on whatever tool produced it, not on at-field.`,
+    );
+    if (transcript.segments.length === 0) {
+      console.log(
+        `No-timestamps disclaimer: plain-text input has no segment timing -- timestamped occurrences will be ` +
+          `empty in this report. Use .srt/.vtt input to keep them.`,
+      );
     }
 
     // --- Theme / lexical field ---------------------------------------------
@@ -313,7 +124,8 @@ program
 
     const result = await analyze(transcript, field);
     const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
-    const renderOptions = { obviousnessSteps, transcriptFileName: transcriptFileNameForReport ?? undefined };
+    const outputPaths = buildOutputPaths(transcriptPath, options.theme!);
+    const renderOptions = { obviousnessSteps, transcriptFileName: path.basename(transcriptPath) };
     const markdown = renderMarkdown(result, renderOptions);
 
     fs.writeFileSync(outputPaths.reportPath, markdown, "utf-8");
@@ -321,11 +133,6 @@ program
     console.log(renderTerminalGraphic(result, renderOptions));
     console.log(markdown);
     console.log(`\nWritten: ${outputPaths.reportPath}`);
-    if (shouldWriteTranscriptFile) {
-      console.log(`Written: ${outputPaths.transcriptPath}`);
-    }
-
-    void PRESETS;
   });
 
 program.parseAsync(process.argv);

@@ -68,7 +68,6 @@ test("parseSubtitles returns empty for content with no timestamp lines", () => {
 test("loadTranscriptFile parses .srt with real segments", () => {
   const filePath = tempFile("t.srt", "1\n00:00:00,000 --> 00:00:02,000\nHello world\n");
   const result = loadTranscriptFile(filePath);
-  assert.equal(result.source, "manual");
   assert.equal(result.segments.length, 1);
   assert.equal(result.text, "Hello world");
   fs.unlinkSync(filePath);

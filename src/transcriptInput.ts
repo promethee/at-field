@@ -80,11 +80,7 @@ export function loadTranscriptFile(filePath: string): TranscriptResult {
 
   return {
     text,
-    source: "manual",
     language: detected.code ?? "unknown",
     segments,
-    durationCap: null,
-    segmentRange: null,
-    gpuUsed: null,
   };
 }
