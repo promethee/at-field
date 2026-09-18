@@ -3,7 +3,7 @@
 `at-field` transcribes audio and scores how much a theme's lexical field runs through it (e.g. `--theme "animals"`).
 
 ```bash
-at-field podcast.mp3 --theme "economy"
+at-field podcast.mp3 --theme "economy" --language en
 ```
 
 Built to be simple by default — one command, working presets — while still letting you dial in specifics (theme source, language, time range) when needed.
@@ -41,7 +41,7 @@ at-field <audio-file> --theme "<theme>" [options]
 | `--max-duration <minutes>` | via preset | Cap on audio analyzed, `0` = unlimited. |
 | `--start <time>` | start of audio | Range start: seconds, `MM:SS`, or `HH:MM:SS`. |
 | `--end <time>` | end of audio | Range end, same format as `--start`. |
-| `--language <code>` | `auto` | Expected transcript language; checked against `--theme`'s detected language. |
+| `--language <code>` | *(required)* | Audio's language, e.g. `en`, `fr`. No auto-detect — see Known Limitations for why. Checked against `--theme`'s detected language. |
 | `--obviousness-steps <n>` | `2` | Divide the obviousness score into `n` equal bands (no semantic labels — raw % is always shown too). |
 
 Each run writes a Markdown report and a transcript file next to the input audio.
@@ -56,7 +56,8 @@ Not a summarizer. Not a research workspace — no saved projects, no cross-run m
 
 ## Known limitations
 
-- `--theme` and the audio must be in the same language — a mismatch is detected and the run stops before producing a misleading result. Short or unusual `--theme` phrases can occasionally be confidently *mis*detected as a different language (a `franc-min` limitation, not just low-confidence "ambiguous" cases) — if a run stops on a language mismatch you believe is wrong, set `--language` explicitly to bypass detection.
+- **Why isn't the audio's language auto-detected?** Because the language-detection library this tool uses for `--theme` (`franc-min`) can *confidently* misdetect short or unusual phrases as the wrong language — not just return a low-confidence "I don't know." Layering that same unreliable detector onto the audio's language too (instead of asking you) would compound the risk for no real benefit — and an explicit language also gives Whisper a real hint instead of relying on its own auto-detection, which improves transcription accuracy. So `--language` is required, not guessed.
+- `--theme` and the audio must be in the same language — a mismatch is detected and disclosed, and you're asked whether to continue (in case it's a false positive from the limitation above rather than a real mismatch).
 - Fewer than 8 terms in the expanded lexical field triggers a thin-field notice — results may look more like keyword-spotting than a broad thematic read.
 
 ## License

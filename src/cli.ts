@@ -32,7 +32,7 @@ program
   .option("--max-duration <minutes>", "cap in minutes, 0 = unlimited (overrides preset)")
   .option("--start <time>", "start of the range to analyze, e.g. 90, 01:30, or 00:01:30 (default: start of audio)")
   .option("--end <time>", "end of the range to analyze, same format as --start (default: end of audio)")
-  .option("--language <code>", "transcript language, default auto-detect")
+  .option("--language <code>", "transcript language -- required, no auto-detect (see README's Known Limitations)")
   .option(
     "--obviousness-steps <n>",
     "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
@@ -46,6 +46,18 @@ program
 
     if (!opts.theme) {
       program.error("error: --theme is required (always required; --lexic only changes term sourcing)");
+    }
+
+    // --language is mandatory -- no auto-detect. franc-min (used to detect
+    // --theme's language for the mismatch check below) can confidently
+    // misdetect short/unusual theme phrases as the wrong language; layering
+    // that same unreliable detector onto the audio's language too (the old
+    // "auto" mode) compounded the risk for no real benefit. An explicit,
+    // stated ground truth is more reliable outright -- it also gives
+    // Whisper itself a real language hint instead of relying on its own
+    // auto-detection. See README's Known Limitations for the full reasoning.
+    if (!opts.language) {
+      program.error("error: --language is required, e.g. --language en (no auto-detect -- see README's Known Limitations for why)");
     }
 
     const presetName = (opts.preset as PresetName) ?? "fast";
@@ -78,38 +90,33 @@ program
       endSeconds,
     };
 
-    // --- Language mismatch check (explicit --language only) ---------------
+    // --- Language mismatch check ---------------------------------------
     // Runs first, before any confirm gates: it's a free, instant check that
     // can invalidate the whole invocation, so it shouldn't happen after the
-    // user's already been asked to confirm a model download. If --language
-    // is set explicitly, the user already stated ground truth, so a mismatch
-    // is disclosed and confirmed rather than blocked outright -- franc-min
+    // user's already been asked to confirm a model download. The user
+    // already stated ground truth via --language, so a mismatch is
+    // disclosed and confirmed rather than blocked outright -- franc-min
     // can confidently misdetect short/unusual --theme phrases (see
     // INTENT.md), so a hard stop here would sometimes reject valid input.
     // Ambiguous detection (short --theme strings often are) only warns.
-    // --language=auto can't be checked here -- Whisper hasn't run yet, so
-    // there's nothing to compare against; that case is checked after
-    // transcription instead.
-    if (options.language && options.language !== "auto") {
-      const match = checkLanguageMatch(options.theme!, options.language);
-      if (match === "mismatch") {
-        const themeLang = detectLanguageCode(options.theme!).code;
-        const proceed = await confirm(
-          `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but --language is set ` +
-            `to "${options.language}". Short theme phrases are sometimes misdetected -- try a longer phrase ` +
-            `or a synonym, or continue if this is a false positive. Continue anyway?`,
-        );
-        if (!proceed) {
-          console.log("Aborted.");
-          process.exitCode = 1;
-          return;
-        }
-      } else if (match === "ambiguous") {
-        console.log(
-          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
-            `to compare against --language=${options.language}. If matches come back empty, this may be why.`,
-        );
+    const themeLangMatch = checkLanguageMatch(options.theme!, options.language!);
+    if (themeLangMatch === "mismatch") {
+      const themeLang = detectLanguageCode(options.theme!).code;
+      const proceed = await confirm(
+        `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but --language is set ` +
+          `to "${options.language}". Short theme phrases are sometimes misdetected -- try a longer phrase ` +
+          `or a synonym, or continue if this is a false positive. Continue anyway?`,
+      );
+      if (!proceed) {
+        console.log("Aborted.");
+        process.exitCode = 1;
+        return;
       }
+    } else if (themeLangMatch === "ambiguous") {
+      console.log(
+        `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
+          `to compare against --language=${options.language}. If matches come back empty, this may be why.`,
+      );
     }
 
     // --- Implicit transcript-artifact reuse ---------------------------
@@ -131,9 +138,8 @@ program
       if (reuse) {
         console.log(
           `Reusing existing transcript from ${existing.path} — delete it to force re-transcription. ` +
-            `Note: reused transcripts have no saved segment timestamps or language metadata -- ` +
-            `timestamped occurrences will be empty in this report, and the language-mismatch check ` +
-            `is skipped this run.`,
+            `Note: reused transcripts have no saved segment timestamps -- timestamped occurrences will be ` +
+            `empty in this report.`,
         );
         if (options.startSeconds !== null || options.endSeconds !== null) {
           console.log(
@@ -272,43 +278,6 @@ program
     if (shouldWriteTranscriptFile) {
       fs.writeFileSync(outputPaths.transcriptPath, renderTranscriptText(transcript.segments), "utf-8");
       transcriptFileNameForReport = outputPaths.transcriptFileName;
-    }
-
-    // --- Language mismatch check (--language=auto case) ---------------
-    // Only reachable when --language was auto/unset AND this run actually
-    // transcribed (transcript.language now holds Whisper's real detected
-    // code -- see transcribe.ts). Skipped for a reused transcript, which
-    // has no saved language metadata to check against (disclosed above).
-    // Checked before analysis/report so a mismatch never produces a
-    // misleading near-all-zero-matches result -- transcription cost is
-    // already spent either way, so stopping here still prevents a bad
-    // output from reaching the user. See INTENT.md for why this can't be
-    // checked earlier.
-    if (
-      shouldWriteTranscriptFile &&
-      (!options.language || options.language === "auto") &&
-      transcript.language !== "auto"
-    ) {
-      const match = checkLanguageMatch(options.theme!, transcript.language);
-      if (match === "mismatch") {
-        console.log(
-          `error: --theme "${options.theme}" appears to be in a different language than the audio ` +
-            `(detected: ${transcript.language}). Lexical matching relies on --theme and the transcript ` +
-            `being in the same language. The transcript was already written to ${outputPaths.transcriptPath} ` +
-            `and will be offered for reuse on your next run with this audio+theme. Short theme phrases ` +
-            `are sometimes misdetected -- try a longer phrase or a synonym, or rerun with ` +
-            `--language=${transcript.language} to get a chance to confirm past a false positive instead ` +
-            `of this hard stop.`,
-        );
-        process.exitCode = 1;
-        return;
-      } else if (match === "ambiguous") {
-        console.log(
-          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language ` +
-            `to compare against the audio's detected language (${transcript.language}). If matches come ` +
-            `back empty, this may be why.`,
-        );
-      }
     }
 
     // --- Theme / lexical field ---------------------------------------------
