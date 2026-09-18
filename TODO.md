@@ -26,13 +26,35 @@ suspected fix, then **fully reverted** after it locked up the test
 machine hard enough to require a hard reset. GPU is now off entirely, no
 opt-in flag, until that failure mode is understood — see INTENT.md.
 Antivirus/power-plan interference is the current leading theory for the
-underlying slowness, not yet confirmed either way. Remaining v1 gap: the
-demo GIF.
+underlying slowness, not yet confirmed either way.
+
+**Major pivot decided and in progress: dropping audio/Whisper entirely,
+accepting a premade transcript as input instead** (text-to-text, not
+audio-to-text). Triggered directly by the GPU lockup plus the broader
+pattern of three separate native-binding failures across this session
+(`nodejs-whisper` build failures, `@fugood/whisper.node` extreme
+slowness, then the lockup) — see the new section below and INTENT.md for
+the reasoning. This supersedes the demo-GIF gap and the real-hardware
+speed question above as the active work; those are paused, not resolved.
 
 How to use this file: every `[x]` must have a file reference and an
 acceptance criterion (what specifically makes it true) — not just "done".
 If you (Claude) mark something `[x]` without both, that's a process
 violation — stop and fix the checklist entry, don't just fix the code.
+
+## Text-to-text pivot (in progress — current active work)
+
+Decision: drop audio input and local Whisper transcription entirely. `at-field` becomes a tool that takes a *premade transcript* (from any tool the user already trusts) plus a theme, and does the same lexical-field analysis it always has. Rationale in full: this session hit three separate severe failures across three different native-binding approaches to local transcription (`nodejs-whisper` build failures across platforms, `@fugood/whisper.node`'s extreme slowness even CPU-only, then a GPU-acceleration attempt that locked up a real test machine hard enough to need a hard reset) — the pattern points at bundling native ML binaries via npm as the actual problem, not any one library's bug. Mature, independent, already-reliable transcription tools already exist (`whisper.cpp`'s own CLI used directly, `faster-whisper`/`openai-whisper`, desktop GUI apps like MacWhisper/Vibe/Buzz) — `at-field` no longer needs to own that reliability problem itself. `node-llama-cpp` (theme expansion) is explicitly **kept for now** — proceeding one step at a time, and it was never confirmed to be implicated in the lockup.
+
+Working name for the retronym, decided but **not prominently used** anywhere (README/npm page) per the maintainer: "AT" = "Alleged Textual" (Field) — "alleged" carries the "user suspects a theme is there, tool confirms/quantifies it" framing; "Textual" reflects the drop from audio.
+
+Steps (one at a time, per the maintainer's explicit request — do not batch these):
+- [x] **Step 1: new input-parsing module.** `src/transcriptInput.ts::loadTranscriptFile` reads `.srt`/`.vtt` (real timestamps parsed via `parseSubtitles` — both formats share a "start --> end" timestamp-line pattern closely enough to parse in one pass, tolerating SRT's comma decimals vs. VTT's dot decimals and VTT's optional hours) or any other extension as plain raw text (no timestamps, same "timestamped occurrences will be empty" limitation the existing transcript-reuse feature already has for the same reason). Language is detected directly from the real transcript text via the existing `detectLanguageCode` (`src/language.ts`) rather than only ever seeing the short `--theme` string — expected to be meaningfully more reliable than the franc-min-on-short-strings problem documented earlier in this file, since a real transcript gives it far more signal. Self-contained, not yet wired into `cli.ts`. Tested: 11 cases in `src/transcriptInput.test.ts` (SRT parsing, VTT parsing, hour-scale timestamps, multi-line cue joining, no-timestamp content, `.srt`/`.vtt`/`.txt` file loading, language detection success/fallback, missing-file error). Typecheck clean, 98/98 tests passing project-wide.
+- [ ] **Step 2 (not started): rewire `cli.ts`.** Replace the audio-argument + `transcribe()` call with a transcript-file argument + `loadTranscriptFile()`. Remove entirely: `src/transcribe.ts`, `src/audio.ts`, `--preset`/`--whisper-model`/`--max-duration`/`--start`/`--end` flags, the model-download confirm gates, the implicit transcript-artifact-reuse feature (no longer meaningful once the input already *is* the artifact), `ffmpeg`/`@fugood/whisper.node` dependencies. Re-derive: whether `--language` still needs to be mandatory now that language detection runs on real transcript text instead of the short theme string (likely no longer needed as a hard requirement, given the reliability improvement noted in Step 1).
+- [ ] **Step 3 (not started): update tests.** Remove `src/audio.test.ts`, `src/transcribe.test.ts`, and anything in `src/cli.ts`-adjacent tests that assumed audio input. Confirm `src/analyze.ts`/`src/report.ts`/`src/output.ts` need zero changes (they operate on `TranscriptResult`/`LexicalFieldResult` shapes already, regardless of how those were produced).
+- [ ] **Step 4 (not started): full INTENT.md rewrite.** The current "What this is" and "Why this exists" sections explicitly claim "audio-first" as the core differentiator versus transcript-only tools like ThemeForge (INTENT.md's own comparison) — that claim becomes false once this pivot lands. Deliberately deferred until the code pivot is actually complete, to avoid documenting a moving target; a full rewrite, not an addendum, unlike every other change recorded in INTENT.md so far.
+- [ ] **Step 5 (not started): README rewrite.** New one-liner example (transcript file instead of audio), flags table update, prerequisites section (drop `ffmpeg` mention, since there's no audio to trim/probe).
+- [ ] **Step 6 (not started): npm pack test.** Rebuild the `.tgz` and retest on the maintainer's machine once the pivot is functionally complete.
 
 ## Fixed defects (history — kept for context, not action items)
 

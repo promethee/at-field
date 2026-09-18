@@ -1,5 +1,7 @@
 # INTENT.md
 
+> **In progress, not yet reflected below:** a major pivot away from everything this document currently says about audio/Whisper being the input — see TODO.md's "Text-to-text pivot" section for the decision, rationale, and step-by-step progress. This document's "What this is," "Why this exists," and "Whisper backend" sections are all about to become stale; deliberately not rewritten yet, to avoid documenting a moving target mid-pivot. Full rewrite is Step 4 of that plan.
+
 ## What this is
 
 `at-field` is a CLI tool that takes a user-provided local audio file, transcribes it locally (Whisper), and runs a **theme-crossed lexical field analysis**: given a user-supplied theme (e.g. `--theme "animals"`), it expands that theme into a lexical field (related vocabulary, not just the literal word) and measures how much of that field appears in the transcript.
