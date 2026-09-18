@@ -2,16 +2,9 @@ import fs from "node:fs";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
-import { initWhisper, type LibVariant, type TranscribeResult } from "@fugood/whisper.node";
+import { initWhisper, type TranscribeResult } from "@fugood/whisper.node";
 
 import type { CliOptions, TranscriptResult, TranscriptSegment } from "./types.js";
-
-// Vulkan works across AMD/Intel/Nvidia GPUs on Windows/Linux; macOS's
-// "default" variant already supports Metal when useGpu is true, so no
-// separate variant is needed there. CUDA isn't tried separately -- Vulkan
-// already covers Nvidia GPUs too, and picking one non-default variant
-// keeps this simple.
-const GPU_VARIANT: LibVariant | undefined = process.platform === "darwin" ? undefined : "vulkan";
 
 export type WhisperModelName = "tiny" | "base" | "small" | "medium" | "large";
 
@@ -93,34 +86,6 @@ export async function ensureModelDownloaded(model: string): Promise<void> {
 }
 
 /**
- * Runs one transcription attempt end-to-end (init context, transcribe,
- * release) with the given GPU settings. Separated from transcribe() so a
- * GPU attempt and its CPU fallback are two clean, independent calls rather
- * than intertwined try/catch branches.
- */
-async function runTranscription(
-  modelPath: string,
-  audioPath: string,
-  language: string | undefined,
-  useGpu: boolean,
-  variant?: LibVariant,
-): Promise<TranscribeResult> {
-  const context = await initWhisper({ filePath: modelPath, useGpu }, variant);
-  try {
-    // whisper.cpp's bundled `miniaudio` decoder reads mp3/wav/flac/etc.
-    // directly -- no ffmpeg pre-conversion step needed here (ffmpeg is
-    // still used elsewhere, for --start/--end/--max-duration trimming).
-    const { promise } = context.transcribeFile(audioPath, {
-      language,
-      maxThreads: os.cpus().length,
-    });
-    return await promise;
-  } finally {
-    await context.release();
-  }
-}
-
-/**
  * Transcribes the input audio with a local Whisper model via
  * @fugood/whisper.node (prebuilt native whisper.cpp bindings -- no local
  * compile step, unlike the nodejs-whisper backend this replaced). Assumes
@@ -128,10 +93,12 @@ async function runTranscription(
  * ensureModelDownloaded() first (cli.ts does, with its own confirm gate
  * and stage message; this function stays a pure transcription step).
  *
- * Tries GPU acceleration first (via the platform's Vulkan build, or
- * macOS's Metal-capable default build), falling back to CPU-only if the
- * GPU attempt throws -- CPU-only is the long-proven-reliable path, GPU is
- * new and unverified across the range of real hardware this will run on.
+ * CPU-only, deliberately. GPU acceleration was tried (attempt GPU, fall
+ * back to CPU on error) and reverted after it locked up a real test
+ * machine hard enough to need a full reset -- a native GPU-init failure
+ * apparently doesn't always surface as a catchable JS error the way the
+ * try/catch assumed. Not reintroduced, not even as an opt-in flag, until
+ * that failure mode is understood. See INTENT.md.
  */
 export async function transcribe(
   options: Pick<CliOptions, "audioPath" | "whisperModel" | "language">,
@@ -150,14 +117,19 @@ export async function transcribe(
   const languageParam = requestedLanguage === "auto" ? undefined : requestedLanguage;
   const modelPath = modelPathFor(model);
 
+  const context = await initWhisper({ filePath: modelPath, useGpu: false });
   let result: TranscribeResult;
-  let gpuUsed: boolean;
   try {
-    result = await runTranscription(modelPath, options.audioPath, languageParam, true, GPU_VARIANT);
-    gpuUsed = true;
-  } catch {
-    result = await runTranscription(modelPath, options.audioPath, languageParam, false);
-    gpuUsed = false;
+    // whisper.cpp's bundled `miniaudio` decoder reads mp3/wav/flac/etc.
+    // directly -- no ffmpeg pre-conversion step needed here (ffmpeg is
+    // still used elsewhere, for --start/--end/--max-duration trimming).
+    const { promise } = context.transcribeFile(options.audioPath, {
+      language: languageParam,
+      maxThreads: os.cpus().length,
+    });
+    result = await promise;
+  } finally {
+    await context.release();
   }
 
   const segments: TranscriptSegment[] = result.segments.map((s) => ({
@@ -179,6 +151,8 @@ export async function transcribe(
     // afterward.
     durationCap: null,
     segmentRange: null,
-    gpuUsed,
+    // Always false -- GPU is not attempted at all right now, see the
+    // comment on transcribe() above.
+    gpuUsed: false,
   };
 }

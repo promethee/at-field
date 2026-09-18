@@ -47,18 +47,19 @@ export async function isThemeModelCached(modelUri: string = DEFAULT_MODEL_URI): 
  * (node-llama-cpp, in-process, no external daemon). Output is constrained
  * to a JSON schema so parsing never fails on free-text drift.
  *
- * GPU acceleration: node-llama-cpp's getLlama() already defaults to
- * `gpu: "auto"` -- it tries GPU backends itself and falls back to CPU
- * automatically, no extra code needed here (unlike @fugood/whisper.node,
- * which required wiring that up manually). `llama.gpu` after it resolves
- * reports which backend actually ended up used, surfaced to the caller so
- * it can be disclosed the same way transcribe()'s gpuUsed is.
+ * CPU-only, deliberately. getLlama() defaults to `gpu: "auto"`, trying a
+ * GPU backend itself before falling back to CPU -- explicitly disabled
+ * here (`gpu: false`) after the equivalent auto-GPU-then-fallback attempt
+ * in transcribe() locked up a real test machine hard enough to need a
+ * full reset. Not reintroduced until that failure mode is understood, out
+ * of caution even though this stalling incident wasn't confirmed to be
+ * this code path specifically. See INTENT.md.
  */
 export async function expandTheme(
   theme: string,
   modelUri: string = DEFAULT_MODEL_URI,
 ): Promise<LexicalFieldResult> {
-  const llama = await getLlama();
+  const llama = await getLlama({ gpu: false });
   const gpuUsed = llama.gpu;
   const modelPath = await resolveModelFile(modelUri, { directory: MODELS_DIR });
   const model = await llama.loadModel({ modelPath });
