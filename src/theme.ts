@@ -201,30 +201,51 @@ export async function expandTheme(
   };
 }
 
+// A term sharing this many leading letters with an already-kept term is
+// treated as a variant of it (inflection/derivation) and dropped. Deliberately
+// conservative: real French output padded a field with lecture/lectrices,
+// voyage/voyageur/voyageuse, photographie/photographe/photographique, which
+// inflates the field size and deflates saturation. 5 avoids most false merges
+// of distinct short roots (jeu/jeune, parc/parce, art/article, chat/chateau)
+// at the cost of missing variants of short roots (art/artistes,
+// lecture/lecteur). Known false merge at 5: marché/marchandise. See INTENT.md.
+const MIN_SHARED_PREFIX = 5;
+
+function sharedPrefixLength(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
 /**
  * Post-filters the model's raw terms. Matching against the transcript is
  * literal and word-by-word, so multi-word phrases can never match unless
  * spoken verbatim -- they only add noise. Small models ignore a "single
  * words only" instruction often enough (real French testing returned
  * phrases like "croissance du secteur du travail") that this is enforced
- * here rather than trusted to the prompt. Also dedupes case- and
- * accent-insensitively, and drops any of the theme's own words: a hit on
- * the theme's own vocabulary would inflate saturation with evidence the
- * theme already implies (circular -- see INTENT.md). Dynamic expansion
- * only -- --lexic lists are the user's own and left untouched.
+ * here rather than trusted to the prompt. Also drops:
+ * - exact duplicates, case- and accent-insensitively;
+ * - variants of an already-kept term (see MIN_SHARED_PREFIX), keeping the
+ *   first one the model listed -- so the field measures breadth, not one
+ *   root repeated in many forms;
+ * - the theme's own words: a hit on the theme's own vocabulary would inflate
+ *   saturation with evidence the theme already implies (circular -- see
+ *   INTENT.md).
+ * Dynamic expansion only -- --lexic lists are the user's own and left
+ * untouched.
  */
 export function cleanExpandedTerms(raw: string[], theme = ""): string[] {
   const fold = (s: string) => s.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
   const themeWords = new Set(fold(theme).split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-  const seen = new Set<string>();
+  const keptKeys: string[] = [];
   const out: string[] = [];
   for (const t of raw) {
     const term = t.trim();
     if (!term || /\s/.test(term)) continue;
     const key = fold(term);
     if (themeWords.has(key)) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (keptKeys.some((k) => k === key || sharedPrefixLength(k, key) >= MIN_SHARED_PREFIX)) continue;
+    keptKeys.push(key);
     out.push(term);
   }
   return out;

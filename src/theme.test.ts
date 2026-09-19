@@ -23,6 +23,26 @@ test("cleanExpandedTerms drops the theme's own words, accent- and case-insensiti
   ]);
 });
 
+test("cleanExpandedTerms drops variants sharing 5+ leading letters, keeping the first listed", () => {
+  assert.deepEqual(
+    cleanExpandedTerms(["photographie", "photographe", "photographique", "voyage", "voyageur", "voyageuse"]),
+    ["photographie", "voyage"],
+  );
+});
+
+test("cleanExpandedTerms variant matching is accent-insensitive", () => {
+  assert.deepEqual(cleanExpandedTerms(["décoration", "décorateur", "décoratrice"]), ["décoration"]);
+});
+
+test("cleanExpandedTerms keeps short-root and 4-letter-prefix pairs (conservative on purpose)", () => {
+  const terms = ["art", "artistes", "jeu", "jeune", "lecture", "lecteur", "camping", "campagne", "parc", "parce"];
+  assert.deepEqual(cleanExpandedTerms(terms), terms);
+});
+
+test("cleanExpandedTerms still dedupes short exact duplicates", () => {
+  assert.deepEqual(cleanExpandedTerms(["art", "Art", "ART"]), ["art"]);
+});
+
 test("cleanExpandedTerms trims and drops empty entries", () => {
   assert.deepEqual(cleanExpandedTerms(["  paw ", "", "   "]), ["paw"]);
 });
