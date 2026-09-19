@@ -58,7 +58,7 @@ Not a summarizer. Not a transcription tool — bring your own transcript. Not a 
 
 ## Known limitations
 
-- `--theme` and the transcript must be in the same language — a mismatch is detected and disclosed, and you're asked whether to continue. Language detection (`franc-min`) can *confidently* misdetect short or unusual phrases as the wrong language, not just return a low-confidence "I don't know" — so this is a confirm, not a hard stop, in case it's a false positive.
+- The lexical field is written in the transcript's language (auto-detected, or set with `--language`), so `--theme` can be in any language. How good that field is depends on the model: small models are weak outside English, hence the `qwen2.5:3b` default.
 - Plain-text input has no segment timing, so the report's timestamped-occurrence log will be empty. Use `.srt`/`.vtt` input to keep it.
 - Fewer than 8 terms in the expanded lexical field triggers a thin-field notice — results may look more like keyword-spotting than a broad thematic read.
 

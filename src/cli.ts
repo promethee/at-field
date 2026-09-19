@@ -13,8 +13,6 @@ import {
   DEFAULT_SATURATION_HIGH,
 } from "./report.js";
 import { buildOutputPaths } from "./output.js";
-import { checkLanguageMatch, detectLanguageCode } from "./language.js";
-import { confirm } from "./confirm.js";
 
 const program = new Command();
 
@@ -72,39 +70,12 @@ program
 
     const transcript = loadTranscriptFile(transcriptPath);
 
-    // --- Language mismatch check ---------------------------------------
-    // --language is optional: if given, it's the explicit ground truth;
-    // if omitted, the transcript's own detected language is used instead
-    // -- detected directly from the real, substantial transcript text
-    // (src/transcriptInput.ts), which is far more reliable than the old
-    // design's only option (a short --theme string). Either way, the
-    // weak link is still the *theme*'s own short-string detection, so a
-    // mismatch is disclosed and confirmed rather than blocked outright --
-    // franc-min can confidently misdetect short/unusual theme phrases
-    // (see INTENT.md). "unknown" (couldn't detect and none given) skips
-    // the check entirely -- nothing to compare against.
+    // --language is optional: if given, it's the explicit ground truth; if
+    // omitted, the transcript's own language is detected from its text
+    // (src/transcriptInput.ts). Either way it's what expandTheme() is told to
+    // write the field in, so a --theme in another language just works -- the
+    // old theme-vs-transcript mismatch check was removed as moot.
     const effectiveLanguage = options.language ?? transcript.language;
-    if (effectiveLanguage !== "unknown") {
-      const match = checkLanguageMatch(options.theme!, effectiveLanguage);
-      if (match === "mismatch") {
-        const themeLang = detectLanguageCode(options.theme!).code;
-        const sourceLabel = options.language ? "is set to" : "was detected as";
-        const proceed = await confirm(
-          `Language mismatch: --theme "${options.theme}" looks like "${themeLang}", but the transcript ${sourceLabel} ` +
-            `"${effectiveLanguage}". Short theme phrases are sometimes misdetected -- try a longer phrase or a ` +
-            `synonym, or continue if this is a false positive. Continue anyway?`,
-        );
-        if (!proceed) {
-          console.log("Aborted.");
-          process.exitCode = 1;
-          return;
-        }
-      }
-      // "ambiguous" (theme too short to classify) is deliberately silent: it
-      // fired on nearly every single-word theme, and expandTheme() already
-      // writes the field in the transcript's language regardless of the
-      // theme's, so there is nothing actionable to tell the user.
-    }
 
     console.log(
       `Transcript quality disclaimer: user-provided transcript (language: ${effectiveLanguage}) — accuracy ` +
