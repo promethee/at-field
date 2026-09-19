@@ -40,6 +40,7 @@ Accepts `.srt`, `.vtt` (timestamps preserved in the report), or plain text (no t
 | `--theme <value>` | *(required)* | Theme to expand into a lexical field and score against the transcript. |
 | `--lexic <path>` | — | Static wordlist file instead of dynamic theme expansion. `--theme` still anchors the analysis. |
 | `--language <code>` | auto-detected from transcript | Transcript's language, e.g. `en`, `fr`. Checked against `--theme`'s detected language. |
+| `--model <name>` | `qwen2.5:0.5b` | Ollama model for theme expansion. The default is tiny and fast but weak outside English — for other languages try a larger one (e.g. `qwen2.5:3b`). Offers to `ollama pull` it if missing. |
 | `--obviousness-steps <n>` | `2` | Divide the obviousness score into `n` equal bands (no semantic labels — raw % is always shown too). |
 
 Each run writes a Markdown report next to the input transcript.

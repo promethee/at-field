@@ -20,6 +20,7 @@ program
   .option("--theme <value>", "theme to expand into a lexical field")
   .option("--lexic <path>", "static wordlist file, overrides dynamic theme expansion")
   .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
+  .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:0.5b)")
   .option(
     "--obviousness-steps <n>",
     "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
@@ -107,6 +108,7 @@ program
       ? await loadLexicFile(options.lexic, options.theme!)
       : await expandTheme(options.theme!, {
           language: effectiveLanguage !== "unknown" ? effectiveLanguage : undefined,
+          model: opts.model,
         });
 
     if (field.isThin) {
