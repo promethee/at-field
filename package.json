@@ -2,7 +2,29 @@
   "name": "at-field",
   "version": "0.0.1",
   "description": "Text-in, theme-crossed lexical field analysis out.",
+  "keywords": [
+    "transcript",
+    "lexical-field",
+    "theme",
+    "srt",
+    "vtt",
+    "text-analysis",
+    "ollama",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/promethee/at-field.git"
+  },
+  "bugs": {
+    "url": "https://github.com/promethee/at-field/issues"
+  },
+  "homepage": "https://github.com/promethee/at-field#readme",
+  "license": "MIT",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "at-field": "./dist/cli.js"
   },
@@ -10,14 +32,17 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test src/**/*.test.ts",
-    "test:coverage": "node --import tsx --test --experimental-test-coverage src/**/*.test.ts",
-    "test:watch": "node --import tsx --test --watch src/**/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts",
+    "test:coverage": "node --import tsx --test --experimental-test-coverage src/*.test.ts",
+    "test:watch": "node --import tsx --test --watch src/*.test.ts",
+    "check:pack": "node scripts/check-pack.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run check:pack"
   },
-  "license": "MIT",
   "dependencies": {
     "commander": "^12.1.0",
     "franc-min": "^6.2.0",
