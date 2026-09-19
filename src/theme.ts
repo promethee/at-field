@@ -62,7 +62,10 @@ const FIELD_SCHEMA = {
  * failure mode: server unreachable, user declines, or the pull itself
  * fails (e.g. `ollama` not on PATH).
  */
-async function ensureModelPulled(model: string): Promise<void> {
+export async function ensureModelPulled(
+  model: string,
+  deps: { confirm: typeof confirm; pullModel: (model: string) => Promise<void> } = { confirm, pullModel },
+): Promise<void> {
   let res: Response;
   try {
     res = await fetch(`${OLLAMA_HOST}/api/tags`);
@@ -83,13 +86,18 @@ async function ensureModelPulled(model: string): Promise<void> {
     return;
   }
 
-  const proceed = await confirm(`Model "${model}" isn't pulled in Ollama yet. Pull it now?`, true);
+  const proceed = await deps.confirm(`Model "${model}" isn't pulled in Ollama yet. Pull it now?`, true);
   if (!proceed) {
     throw new Error(`Aborted: run \`ollama pull ${model}\` yourself, then retry.`);
   }
 
   console.log(`Pulling "${model}" via Ollama...`);
-  await new Promise<void>((resolve, reject) => {
+  await deps.pullModel(model);
+}
+
+/** Runs `ollama pull` with inherited stdio so the user sees Ollama's own progress. */
+export function pullModel(model: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
     const child = spawn("ollama", ["pull", model], { stdio: "inherit" });
     child.on("error", (err) => {
       reject(

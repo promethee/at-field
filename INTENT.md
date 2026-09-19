@@ -50,6 +50,8 @@ Two mechanisms were considered and explicitly **rejected**:
 
 This went through several rounds of revision before landing here — full history of what was tried and rejected (a `--language` requirement tied to Whisper's own auto-detect, a hard-stop-only design, an implicit transcript-artifact-reuse mechanism that existed specifically to make a post-transcription hard stop cheap to retry) is preserved in git history and TODO.md's fixed-defects section rather than repeated here; most of it stopped applying once local transcription was dropped entirely (see below).
 
+**Update after real French testing:** the expansion prompt now names the transcript's language (`src/theme.ts::expandTheme`), so the field is written in the transcript's language even when `--theme` is in another. That weakens this section's original premise — a theme/transcript language mismatch no longer produces a field that can't match. The "could not confidently detect the theme's language" message (the ambiguous case) was removed as pure noise: it fired on nearly every single-word theme with nothing for the user to act on. The mismatch *confirm* was kept for now, but is a candidate for removal too; see TODO.md.
+
 ## Why there's no native ML binding left in this tool at all
 
 `at-field` originally transcribed audio itself, locally, via Whisper, and separately ran theme expansion in-process via `node-llama-cpp`. Both are gone now — dropped after four separate severe failures in a row, across four different native-binding approaches, all on real test hardware:

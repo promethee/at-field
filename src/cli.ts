@@ -99,12 +99,11 @@ program
           process.exitCode = 1;
           return;
         }
-      } else if (match === "ambiguous") {
-        console.log(
-          `Language-match disclaimer: could not confidently detect --theme "${options.theme}"'s language to ` +
-            `compare against "${effectiveLanguage}". If matches come back empty, this may be why.`,
-        );
       }
+      // "ambiguous" (theme too short to classify) is deliberately silent: it
+      // fired on nearly every single-word theme, and expandTheme() already
+      // writes the field in the transcript's language regardless of the
+      // theme's, so there is nothing actionable to tell the user.
     }
 
     console.log(
