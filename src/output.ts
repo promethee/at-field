@@ -4,9 +4,11 @@ import path from "node:path";
 function slugify(value: string): string {
   return (
     value
+      .normalize("NFD")
+      .replace(/\p{M}+/gu, "")
       .toLowerCase()
       .trim()
-      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
       .replace(/^-+|-+$/g, "") || "untitled"
   );
 }

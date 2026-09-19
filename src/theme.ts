@@ -117,12 +117,27 @@ async function ensureModelPulled(model: string): Promise<void> {
  * generation could stall indefinitely on CPU with no progress at all) --
  * see INTENT.md for the full pattern across all three.
  */
-export async function expandTheme(theme: string, model: string = DEFAULT_MODEL): Promise<LexicalFieldResult> {
+export async function expandTheme(
+  theme: string,
+  options: { language?: string; model?: string } = {},
+): Promise<LexicalFieldResult> {
+  const model = options.model ?? DEFAULT_MODEL;
   await ensureModelPulled(model);
+
+  // Matching is literal word-boundary against the transcript, so terms in
+  // the wrong language score 0 -- the model must be told which language to
+  // answer in, or it defaults to the (English) prompt's language.
+  const languageName = options.language
+    ? new Intl.DisplayNames(["en"], { type: "language" }).of(options.language)
+    : undefined;
+  const languageRule = languageName
+    ? `Write every term in ${languageName}, even if the theme is given in another language. `
+    : `Write the terms in the same language as the theme. `;
 
   const prompt =
     `List the lexical field of the theme/topic "${theme}": words and short phrases ` +
     `commonly associated with it (not just synonyms of the theme word itself). ` +
+    languageRule +
     `Return 15-30 distinct terms if the theme is broad enough to support that many; ` +
     `fewer is fine for a genuinely narrow theme.`;
 

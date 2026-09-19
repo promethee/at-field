@@ -105,7 +105,9 @@ program
     }
     const field = options.lexic
       ? await loadLexicFile(options.lexic, options.theme!)
-      : await expandTheme(options.theme!);
+      : await expandTheme(options.theme!, {
+          language: effectiveLanguage !== "unknown" ? effectiveLanguage : undefined,
+        });
 
     if (field.isThin) {
       console.log(

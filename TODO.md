@@ -80,6 +80,10 @@ Steps (one at a time, per the maintainer's explicit request — do not batch the
 
 ## Fixed defects (history — kept for context, not action items)
 
+- [x] **Theme expansion ignored the transcript's language (found by the maintainer testing French).** The prompt never said which language to answer in, so the model answered in English and literal matching against a French transcript scored 0. Fix: `src/theme.ts::expandTheme(theme, {language, model})` now instructs the model to write every term in the transcript's language (`Intl.DisplayNames` maps the code to a name; falls back to "same language as the theme" when unknown), wired from `src/cli.ts`'s `effectiveLanguage`. Verified for real: `économie` + `--language fr` now returns French terms. **Still open:** `qwen2.5:0.5b`'s French is poor (invents phrases like "croissance du secteur du travail"; 0 matches on a matching French sample) — needs a larger model and likely a `--model` flag; untested beyond the 0.5B.
+- [x] **Report filename dropped accented letters** (`économie` → `conomie`). `src/output.ts::slugify` now strips diacritics (NFD) and keeps any Unicode letter/digit, so non-Latin themes no longer collapse to "untitled". Tested: 2 new cases in `src/output.test.ts`. 64/64 passing.
+- [ ] **Language-match disclaimer fires even with `--language`** ("could not confidently detect --theme's language"). By design (franc-min can't classify short themes), but noisy and unhelpful for single-word themes; consider suppressing when `--language` is explicit.
+
 - [x] `--lexic` used to silently break `--theme`'s role as the analysis
   anchor (`loadLexicFile` derived `theme` from the wordlist's filename).
   Fixed: `--theme` is now required in all cases; `loadLexicFile(filePath,
