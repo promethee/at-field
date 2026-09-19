@@ -114,6 +114,43 @@ export function pullModel(model: string): Promise<void> {
 }
 
 /**
+ * Reads Ollama's streamed /api/generate response (one JSON object per line)
+ * and returns the concatenated text. Streaming matters: Node's fetch gives up
+ * after 5 minutes without a byte, and a non-streamed request sends nothing
+ * until generation finishes, which a slow CPU can exceed (found on real
+ * hardware: a 3B model ran 5m13s and the request was cut).
+ */
+async function readGenerateStream(res: Response): Promise<string> {
+  if (!res.body) throw new Error("Ollama returned an empty response.");
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+  const handleLine = (line: string) => {
+    if (!line.trim()) return;
+    const chunk = JSON.parse(line) as { response?: string; error?: string };
+    if (chunk.error) throw new Error(`Ollama request failed: ${chunk.error}`);
+    text += chunk.response ?? "";
+  };
+  try {
+    for await (const part of res.body as unknown as AsyncIterable<Uint8Array>) {
+      buffer += decoder.decode(part, { stream: true });
+      let newline = buffer.indexOf("\n");
+      while (newline >= 0) {
+        handleLine(buffer.slice(0, newline));
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf("\n");
+      }
+    }
+    buffer += decoder.decode();
+    handleLine(buffer);
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("Ollama request failed")) throw err;
+    throw new Error(`Ollama stopped responding mid-generation. (${(err as Error).message})`);
+  }
+  return text;
+}
+
+/**
  * Expands a user-supplied theme into a lexical field using a local Ollama
  * server (a separately-installed, separately-maintained binary -- not an
  * in-process native npm binding). Output is constrained to a JSON schema
@@ -162,8 +199,12 @@ export async function expandTheme(
         model,
         prompt,
         format: FIELD_SCHEMA,
-        stream: false,
-        options: { num_predict: MAX_EXPANSION_TOKENS },
+        stream: true,
+        // Fixed seed: the same theme, model and language give the same field,
+        // so a score can be compared between runs (Ollama's default gave a new
+        // field every run). Temperature stays at the default on purpose:
+        // temperature 0 made a small model stop after 3 terms instead of ~24.
+        options: { num_predict: MAX_EXPANSION_TOKENS, seed: 0 },
       }),
     });
   } catch (err) {
@@ -181,11 +222,11 @@ export async function expandTheme(
     throw new Error(`Ollama request failed (${res.status}): ${body || res.statusText}`);
   }
 
-  const data = (await res.json()) as { response: string };
+  const raw = await readGenerateStream(res);
 
   let parsed: { terms: string[] };
   try {
-    parsed = JSON.parse(data.response) as { terms: string[] };
+    parsed = JSON.parse(raw) as { terms: string[] };
   } catch {
     throw new Error(
       `Theme expansion produced incomplete output (likely hit the ${MAX_EXPANSION_TOKENS}-token cap before ` +

@@ -12,8 +12,17 @@ function tags(...names: string[]): Response {
   return json({ models: names.map((n) => ({ name: n, model: n })) });
 }
 
+/** Streamed NDJSON like Ollama's, with the text split across two chunks. */
 function generate(payload: unknown): Response {
-  return json({ response: typeof payload === "string" ? payload : JSON.stringify(payload) });
+  const text = typeof payload === "string" ? payload : JSON.stringify(payload);
+  const mid = Math.floor(text.length / 2);
+  const lines = [
+    { response: text.slice(0, mid), done: false },
+    { response: text.slice(mid), done: true },
+  ]
+    .map((l) => JSON.stringify(l))
+    .join("\n");
+  return new Response(lines + "\n", { status: 200, headers: { "Content-Type": "application/x-ndjson" } });
 }
 
 interface Call {
@@ -153,9 +162,17 @@ test("expandTheme request body carries the default model, num_predict cap, and s
   const gen = calls.find((c) => c.url.endsWith("/api/generate"));
   assert.ok(gen?.body);
   assert.equal(gen.body.model, "qwen2.5:3b");
-  assert.equal(gen.body.stream, false);
+  assert.equal(gen.body.stream, true);
   assert.equal((gen.body.options as { num_predict: number }).num_predict, 1024);
   assert.equal((gen.body.format as { type: string }).type, "object");
+});
+
+test("expandTheme sends a fixed seed and leaves temperature at the model default", async () => {
+  const calls = stubFetch(ollamaOk({ terms: ["a1"] }));
+  await expandTheme("economy");
+  const options = calls.find((c) => c.url.endsWith("/api/generate"))?.body?.options as Record<string, unknown>;
+  assert.equal(options.seed, 0);
+  assert.equal("temperature" in options, false);
 });
 
 test("expandTheme tells the model to answer in the transcript's language", async () => {
@@ -204,4 +221,33 @@ test("expandTheme reports an unreachable server if it drops between the two requ
     throw new TypeError("fetch failed");
   });
   await assert.rejects(() => expandTheme("economy"), /Could not reach a local Ollama server/);
+});
+
+test("expandTheme surfaces an error line sent inside the stream", async () => {
+  stubFetch((url) =>
+    url.endsWith("/api/tags")
+      ? tags("qwen2.5:3b")
+      : new Response(JSON.stringify({ error: "model runner crashed" }) + "\n", { status: 200 }),
+  );
+  await assert.rejects(() => expandTheme("economy"), /Ollama request failed: model runner crashed/);
+});
+
+test("expandTheme reports a stream that dies mid-generation", async () => {
+  stubFetch((url) => {
+    if (url.endsWith("/api/tags")) return tags("qwen2.5:3b");
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(JSON.stringify({ response: '{"terms": ["a1"' }) + "\n"));
+        controller.error(new TypeError("terminated"));
+      },
+    });
+    return new Response(body, { status: 200 });
+  });
+  await assert.rejects(() => expandTheme("economy"), /stopped responding mid-generation/);
+});
+
+test("expandTheme joins streamed chunks into one JSON document", async () => {
+  stubFetch(ollamaOk({ terms: ["budget", "impôt", "salaire"] }));
+  const field = await expandTheme("économie", { language: "fr" });
+  assert.deepEqual(field.terms, ["budget", "impôt", "salaire"]);
 });
