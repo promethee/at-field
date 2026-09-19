@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>at-field: theme-crossed lexical field analysis</title>
+  <meta name="description" content="at-field measures how much of a theme's vocabulary a transcript uses. It runs locally with Ollama and needs no API keys.">
+  <meta name="color-scheme" content="light dark">
+  <meta property="og:title" content="at-field: theme-crossed lexical field analysis">
+  <meta property="og:description" content="Measures how much of a theme's vocabulary a transcript uses. Runs locally with Ollama.">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6b5b'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='700' text-anchor='middle' fill='white'%3EAT%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #fbfaf7;
+      --fg: #1d1c19;
+      --muted: #5d5950;
+      --line: #e2dfd6;
+      --card: #ffffff;
+      --accent: #0b6b5b;
+      --accent-soft: #e3f1ed;
+      --term-bg: #14191b;
+      --term-fg: #d5dfdb;
+      --term-dim: #93a49e;
+      --hit-bg: #f2c94c;
+      --hit-fg: #1a1500;
+      --chip-bg: #efece4;
+      --chip-fg: #3d3a33;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121311;
+        --fg: #ecebe5;
+        --muted: #a6a298;
+        --line: #2b2c28;
+        --card: #1a1b18;
+        --accent: #5fd0b8;
+        --accent-soft: #1b2a26;
+        --chip-bg: #262723;
+        --chip-fg: #cfccc2;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font: 1.0625rem/1.65 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    .wrap { max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
+    a { color: var(--accent); text-underline-offset: 0.18em; }
+    a:hover { text-decoration-thickness: 2px; }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+    code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    code { font-size: 0.92em; }
+    p code, li code { white-space: nowrap; }
+
+    header.hero { padding: 4.5rem 0 2.5rem; border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 0.75rem; color: var(--muted); font-size: 0.9rem; letter-spacing: 0.04em; text-transform: uppercase; }
+    h1 { margin: 0; font: 700 clamp(2.4rem, 8vw, 3.6rem)/1.05 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: -0.02em; }
+    .lede { margin: 1.1rem 0 1.6rem; font-size: 1.3rem; line-height: 1.45; max-width: 36rem; }
+    .cmd { display: block; margin: 0 0 1.4rem; padding: 0.9rem 1.1rem; background: var(--term-bg); color: var(--term-fg); border-radius: 10px; font-size: 1rem; overflow-x: auto; white-space: pre; }
+    .cmd .p { color: var(--term-dim); user-select: none; }
+    .links { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: 0; padding: 0; list-style: none; }
+    .links a { display: inline-block; padding: 0.5rem 0.95rem; border: 1px solid var(--line); border-radius: 999px; background: var(--card); text-decoration: none; font-size: 0.95rem; }
+    .links a:hover { border-color: var(--accent); }
+    .links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    @media (prefers-color-scheme: dark) { .links a.primary { color: #0b1512; } }
+
+    section { padding: 2.75rem 0 0.5rem; }
+    h2 { margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.25; letter-spacing: -0.01em; }
+    h3 { margin: 1.6rem 0 0.35rem; font-size: 1.08rem; line-height: 1.35; }
+    p { margin: 0 0 1rem; }
+    ol.steps { margin: 0 0 1rem; padding-left: 1.3rem; }
+    ol.steps li { margin: 0 0 0.6rem; padding-left: 0.2rem; }
+    ol.steps li::marker { color: var(--accent); font-weight: 700; }
+
+    figure.run { margin: 1.4rem 0 1.8rem; }
+    figure.run figcaption { margin: 0 0 0.45rem; color: var(--muted); font-size: 0.92rem; overflow-wrap: anywhere; }
+    pre.term { margin: 0; padding: 1rem 1.1rem; background: var(--term-bg); color: var(--term-fg); border-radius: 10px; font-size: 0.86rem; line-height: 1.5; overflow-x: auto; }
+    .label { margin: 0.8rem 0 0.4rem; color: var(--muted); font-size: 0.88rem; }
+    .chips { margin: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .chip { padding: 0.12rem 0.55rem; border-radius: 6px; background: var(--chip-bg); color: var(--chip-fg); font: 0.85rem ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .chip.hit { background: var(--hit-bg); color: var(--hit-fg); font-weight: 700; }
+    .note { margin: 1.2rem 0 0; padding: 0.9rem 1.1rem; background: var(--accent-soft); border-left: 4px solid var(--accent); border-radius: 0 8px 8px 0; font-size: 0.98rem; }
+    .note p { margin: 0; }
+
+    dl.stack { display: grid; grid-template-columns: max-content 1fr; gap: 0.5rem 1.4rem; margin: 0 0 1rem; }
+    dl.stack dt { color: var(--muted); }
+    dl.stack dd { margin: 0; }
+    @media (max-width: 34rem) { dl.stack { grid-template-columns: 1fr; gap: 0; } dl.stack dd { margin-bottom: 0.7rem; } }
+
+    ul.tips { margin: 0 0 1rem; padding-left: 1.3rem; }
+    ul.tips li { margin: 0 0 0.6rem; padding-left: 0.2rem; }
+    ul.tips li::marker { color: var(--accent); }
+
+    footer { margin-top: 3.5rem; padding: 1.6rem 0 3rem; border-top: 1px solid var(--line); color: var(--muted); font-size: 0.93rem; }
+    footer p { margin: 0 0 0.4rem; }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Command-line tool · TypeScript</p>
+      <h1>at-field</h1>
+      <p class="lede">Point it at a transcript and name a theme. It measures how much of that theme's vocabulary the text uses.</p>
+      <code class="cmd"><span class="p">$ </span>at-field speech.txt --theme "religion"</code>
+      <ul class="links">
+        <li><a class="primary" href="https://github.com/promethee/at-field">Source on GitHub</a></li>
+        <li><a href="https://github.com/promethee/at-field#readme">README</a></li>
+        <li><a href="https://github.com/promethee/at-field/blob/main/INTENT.md">Design record</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section aria-labelledby="purpose">
+      <h2 id="purpose">What it is for</h2>
+      <p>You suspect a theme runs through a text without being its subject: economy in a nature documentary, religion in a battlefield speech. You name the theme, and at-field returns one score with the matches behind it. The quieter the theme, the more the number helps.</p>
+      <p>The tool is deliberately narrow. It measures one theme in one transcript.</p>
+    </section>
+
+    <section aria-labelledby="how">
+      <h2 id="how">How it works</h2>
+      <ol class="steps">
+        <li>The tool loads the transcript (<code>.srt</code>, <code>.vtt</code> or plain text). The language comes from the text itself, or from <code>--language</code>.</li>
+        <li>A local model, served by <a href="https://ollama.com/download">Ollama</a>, expands the theme into single words in that language. Afterwards, code removes phrases, the theme's own words, and inflected variants of a word already listed.</li>
+        <li>Each word is matched against the transcript by word boundary, ignoring case.</li>
+        <li>The report gives the lexical saturation (distinct words found divided by words in the field), the matches per 1,000 words, and where the score falls between two boundaries you can set (10% and 70% by default). Input with timing also gets timestamped occurrences.</li>
+      </ol>
+    </section>
+
+    <section aria-labelledby="example">
+      <h2 id="example">An example run</h2>
+      <p>Lincoln's Gettysburg Address (public domain) dedicates a battlefield cemetery. Suppose you suspect that religion runs through it. The first run uses the default model, which builds the vocabulary for you.</p>
+      <figure class="run">
+        <figcaption><code>$ at-field examples/gettysburg.txt --theme &quot;religion&quot;</code></figcaption>
+        <pre class="term" tabindex="0">Saturation [█░░░░░░░░░░░░░░░░░░░] 4% (1/23 terms, below the low boundary (10%))
+
+god ██████████████████████████████ 1</pre>
+        <p class="label">Field proposed by the model: 23 words, matches highlighted</p>
+        <p class="chips"><span class="chip hit">god</span> <span class="chip">sacred</span> <span class="chip">faith</span> <span class="chip">worship</span> <span class="chip">pagan</span> <span class="chip">reluctant</span> <span class="chip">miracle</span> <span class="chip">temple</span> <span class="chip">pilgrimage</span> <span class="chip">doctrine</span> <span class="chip">monk</span> <span class="chip">saint</span> <span class="chip">blessing</span> <span class="chip">pious</span> <span class="chip">venerate</span> <span class="chip">purgatory</span> <span class="chip">priest</span> <span class="chip">idol</span> <span class="chip">heretic</span> <span class="chip">orthodox</span> <span class="chip">mystic</span> <span class="chip">sacrament</span> <span class="chip">prophet</span></p>
+      </figure>
+      <p>The model proposed 23 words and the speech uses one of them, "god". A score of 4% says religion is present and takes up little of the text.</p>
+      <p>If you already know which words you are looking for, hand them over as a wordlist with <code>--lexic</code>. The tool uses them as written.</p>
+      <figure class="run">
+        <figcaption><code>$ at-field examples/gettysburg.txt --theme &quot;religion&quot; --lexic examples/religion-words.txt</code></figcaption>
+        <pre class="term" tabindex="0">Saturation [████████░░░░░░░░░░░░] 42% (5/12 terms, between the boundaries (10%–70%))
+
+devotion   ██████████████████████████████ 2
+dedicate   ██████████████████████████████ 2
+god        ███████████████ 1
+consecrate ███████████████ 1
+hallow     ███████████████ 1</pre>
+        <p class="label">Wordlist supplied by the user: 12 words, matches highlighted</p>
+        <p class="chips"><span class="chip hit">god</span> <span class="chip hit">consecrate</span> <span class="chip hit">hallow</span> <span class="chip hit">devotion</span> <span class="chip hit">dedicate</span> <span class="chip">holy</span> <span class="chip">sacred</span> <span class="chip">prayer</span> <span class="chip">faith</span> <span class="chip">divine</span> <span class="chip">blessed</span> <span class="chip">worship</span></p>
+      </figure>
+      <p>Five of the twelve words appear, 42%, with "devotion" and "dedicate" twice each. The same speech, asked a sharper question, gives a fuller answer.</p>
+    </section>
+
+    <section aria-labelledby="using">
+      <h2 id="using">Using it well</h2>
+
+      <h3>Good fits</h3>
+      <ul class="tips">
+        <li>Testing a hunch about a theme that sits beneath the text's subject.</li>
+        <li>Running one theme over several transcripts to see which ones carry it most.</li>
+        <li>Finding where a theme appears. Give it an <code>.srt</code> or <code>.vtt</code> file and the report lists the timestamped passages.</li>
+        <li>Checking a vocabulary you care about, through <code>--lexic</code>.</li>
+      </ul>
+
+      <h3>Getting a reliable reading</h3>
+      <ul class="tips">
+        <li>Read the field before the score. The report lists every word the model proposed, so a missing word is easy to spot. A run for "war" on this same speech proposed "sanguinary" and "warlord" and left out "battle" and "fought", which the text contains. A wordlist supplies the missing words.</li>
+        <li>Choose the model for the language. The default, <code>qwen2.5:3b</code>, gave usable French fields in testing, where models under 1B parameters returned unusable ones. Change it with <code>--model</code>.</li>
+        <li>Include the word forms you want. Matching is literal, so "jeu" and "jeux" are separate words.</li>
+        <li>Set the boundaries for your material. The 10% and 70% defaults are starting points, adjustable with <code>--saturation-low</code> and <code>--saturation-high</code>.</li>
+      </ul>
+
+      <h3>Where another tool fits better</h3>
+      <ul class="tips">
+        <li>For a summary of what a text covers, use a summarizer. at-field answers one question about one theme you supply.</li>
+        <li>For audio, transcribe first with a tool such as <a href="https://github.com/openai/whisper">Whisper</a>, <a href="https://thewh1teagle.github.io/vibe/">Vibe</a> or YouTube captions, then pass the transcript in.</li>
+        <li>For discovering themes, a topic-modelling tool suggests them. at-field measures the one you name.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="stack">
+      <h2 id="stack">Under the hood</h2>
+      <dl class="stack">
+        <dt>Language</dt><dd>TypeScript on Node 22+, ESM</dd>
+        <dt>Dependencies</dt><dd>commander, franc-min, iso-639-3 (all pure JavaScript)</dd>
+        <dt>Model</dt><dd>Any Ollama model; default <code>qwen2.5:3b</code></dd>
+        <dt>Quality</dt><dd>Unit tests on Node's built-in runner, CI on Node 22 and 24</dd>
+        <dt>License</dt><dd>MIT</dd>
+      </dl>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <p>Designed by a human and built through pairing with Claude Code. The <a href="https://github.com/promethee/at-field/blob/main/INTENT.md">design record</a> lists every decision and every rejected alternative.</p>
+      <p><a href="https://github.com/promethee/at-field">github.com/promethee/at-field</a></p>
+    </div>
+  </footer>
+</body>
+</html>
