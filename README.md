@@ -16,7 +16,7 @@ The report says whether the score sits below, between, or above two boundaries (
 
 ## Install
 
-Requires Node.js 20+ and [Ollama](https://ollama.com) running locally (theme expansion uses it to build the lexical field — nothing bundled, no API key).
+Requires Node.js 22+ and [Ollama](https://ollama.com) running locally (theme expansion uses it to build the lexical field — nothing bundled, no API key).
 
 ```bash
 ollama pull qwen2.5:3b
