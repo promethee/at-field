@@ -3,7 +3,22 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadLexicFile } from "./theme.js";
+import { loadLexicFile, cleanExpandedTerms } from "./theme.js";
+
+test("cleanExpandedTerms drops multi-word phrases", () => {
+  assert.deepEqual(cleanExpandedTerms(["croissance", "croissance du secteur du travail", "impôt"]), [
+    "croissance",
+    "impôt",
+  ]);
+});
+
+test("cleanExpandedTerms dedupes case- and accent-insensitively, keeping the first form", () => {
+  assert.deepEqual(cleanExpandedTerms(["Économie", "economie", "ÉCONOMIE", "budget"]), ["Économie", "budget"]);
+});
+
+test("cleanExpandedTerms trims and drops empty entries", () => {
+  assert.deepEqual(cleanExpandedTerms(["  paw ", "", "   "]), ["paw"]);
+});
 
 function tmpFile(contents: string): string {
   const file = path.join(os.tmpdir(), `at-field-lexic-${Date.now()}-${Math.random()}.txt`);

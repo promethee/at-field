@@ -135,10 +135,13 @@ export async function expandTheme(
     : `Write the terms in the same language as the theme. `;
 
   const prompt =
-    `List the lexical field of the theme/topic "${theme}": words and short phrases ` +
-    `commonly associated with it (not just synonyms of the theme word itself). ` +
+    `List the lexical field of the theme/topic "${theme}": single words commonly associated with it ` +
+    `(nouns, verbs, adjectives -- not just synonyms of the theme word itself). ` +
+    `Every entry must be exactly ONE word: no phrases, no expressions, no compound descriptions. ` +
+    `Every entry must be clearly different from the others: no variations, inflections or ` +
+    `rewordings of the same idea, and do not build entries by repeating the theme's own words. ` +
     languageRule +
-    `Return 15-30 distinct terms if the theme is broad enough to support that many; ` +
+    `Return 15-30 terms if the theme is broad enough to support that many; ` +
     `fewer is fine for a genuinely narrow theme.`;
 
   let res: Response;
@@ -180,13 +183,37 @@ export async function expandTheme(
         `finishing). Try a narrower theme, or retry.`,
     );
   }
-  const terms = [...new Set(parsed.terms.map((t) => t.trim()).filter(Boolean))];
+  const terms = cleanExpandedTerms(parsed.terms);
 
   return {
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
   };
+}
+
+/**
+ * Post-filters the model's raw terms. Matching against the transcript is
+ * literal and word-by-word, so multi-word phrases can never match unless
+ * spoken verbatim -- they only add noise. Small models ignore a "single
+ * words only" instruction often enough (real French testing returned
+ * phrases like "croissance du secteur du travail") that this is enforced
+ * here rather than trusted to the prompt. Also dedupes case- and
+ * accent-insensitively. Dynamic expansion only -- --lexic lists are the
+ * user's own and left untouched.
+ */
+export function cleanExpandedTerms(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of raw) {
+    const term = t.trim();
+    if (!term || /\s/.test(term)) continue;
+    const key = term.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(term);
+  }
+  return out;
 }
 
 /**
