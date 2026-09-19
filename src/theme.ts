@@ -3,9 +3,10 @@ import { spawn } from "node:child_process";
 import { confirm } from "./confirm.js";
 import type { LexicalFieldResult } from "./types.js";
 
-// Small instruct model, good enough for a bounded JSON-list generation task.
+// 3B: real French testing showed sub-1B models (qwen2.5:0.5b, minicpm-v4.6)
+// return junk terms and score 0; qwen2.5:3b gave usable fields. ~1.9 GB.
 // Pulled and run by the user's own local Ollama install -- see README.
-const DEFAULT_MODEL = "qwen2.5:0.5b";
+const DEFAULT_MODEL = "qwen2.5:3b";
 
 // OLLAMA_HOST is Ollama's own env var convention, but its value isn't
 // guaranteed to be a full URL -- e.g. found set to bare "0.0.0.0" (no

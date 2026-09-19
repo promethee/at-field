@@ -19,7 +19,7 @@ The report says whether the score sits below, between, or above two boundaries (
 Requires Node.js 20+ and [Ollama](https://ollama.com) running locally (theme expansion uses it to build the lexical field — nothing bundled, no API key).
 
 ```bash
-ollama pull qwen2.5:0.5b
+ollama pull qwen2.5:3b
 git clone https://github.com/promethee/at-field.git
 cd at-field
 npm install
@@ -42,7 +42,7 @@ Accepts `.srt`, `.vtt` (timestamps preserved in the report), or plain text (no t
 | `--theme <value>` | *(required)* | Theme to expand into a lexical field and score against the transcript. |
 | `--lexic <path>` | — | Static wordlist file instead of dynamic theme expansion. `--theme` still anchors the analysis. |
 | `--language <code>` | auto-detected from transcript | Transcript's language, e.g. `en`, `fr`. Checked against `--theme`'s detected language. |
-| `--model <name>` | `qwen2.5:0.5b` | Ollama model for theme expansion. The default is tiny and fast but weak outside English — for other languages try a larger one (e.g. `qwen2.5:3b`). Offers to `ollama pull` it if missing. |
+| `--model <name>` | `qwen2.5:3b` | Ollama model for theme expansion. Offers to `ollama pull` it if missing. Smaller models (e.g. `qwen2.5:0.5b`) are faster but give poor fields outside English; larger ones (e.g. `mistral`) may do better in French. |
 | `--saturation-low <pct>` | `10` | Low boundary for the saturation score, in percent. |
 | `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
 

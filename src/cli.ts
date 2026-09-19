@@ -25,7 +25,7 @@ program
   .option("--theme <value>", "theme to expand into a lexical field")
   .option("--lexic <path>", "static wordlist file, overrides dynamic theme expansion")
   .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
-  .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:0.5b)")
+  .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:3b)")
   .option(
     "--saturation-low <pct>",
     "low boundary for lexical saturation, in percent (see INTENT.md)",
