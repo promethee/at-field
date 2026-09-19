@@ -190,12 +190,49 @@ test("expandTheme falls back to the theme's language when none is given", async 
   assert.match(prompt, /same language as the theme/);
 });
 
-test("expandTheme asks for single, distinct words", async () => {
+test("expandTheme asks for single, plain, everyday words", async () => {
   const calls = stubFetch(ollamaOk({ terms: ["a1"] }));
   await expandTheme("economy");
   const prompt = String(calls.find((c) => c.url.endsWith("/api/generate"))?.body?.prompt);
-  assert.match(prompt, /exactly ONE word/);
-  assert.match(prompt, /clearly different from the others/);
+  assert.match(prompt, /plain, everyday words/);
+  assert.match(prompt, /Avoid rare, technical or literary words/);
+  assert.match(prompt, /exactly one word/);
+  assert.match(prompt, /Do not repeat the theme's own words/);
+});
+
+function generateBody(calls: Call[]) {
+  return calls.find((c) => c.url.endsWith("/api/generate"))?.body as {
+    prompt: string;
+    format: { properties: { terms: { maxItems: number } } };
+  };
+}
+
+test("expandTheme asks for 1.5x the default field size and keeps at most the default size", async () => {
+  const many = Array.from({ length: 40 }, (_, i) => `t${i}`);
+  const calls = stubFetch(ollamaOk({ terms: many }));
+  const field = await expandTheme("economy");
+  const body = generateBody(calls);
+  assert.match(body.prompt, /Give 38 words\./);
+  assert.equal(body.format.properties.terms.maxItems, 38);
+  assert.equal(field.terms.length, 25);
+  assert.deepEqual(field.terms.slice(0, 3), ["t0", "t1", "t2"]);
+});
+
+test("expandTheme honours a custom field size", async () => {
+  const many = Array.from({ length: 40 }, (_, i) => `t${i}`);
+  const calls = stubFetch(ollamaOk({ terms: many }));
+  const field = await expandTheme("economy", { size: 10 });
+  const body = generateBody(calls);
+  assert.match(body.prompt, /Give 15 words\./);
+  assert.equal(body.format.properties.terms.maxItems, 15);
+  assert.equal(field.terms.length, 10);
+});
+
+test("expandTheme returns fewer words than the size when the model has fewer to give", async () => {
+  stubFetch(ollamaOk({ terms: ["budget", "tax", "wage"] }));
+  const field = await expandTheme("economy", { size: 20 });
+  assert.equal(field.terms.length, 3);
+  assert.equal(field.isThin, true);
 });
 
 test("expandTheme reports incomplete output when the response isn't valid JSON", async () => {

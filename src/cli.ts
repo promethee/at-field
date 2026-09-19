@@ -4,7 +4,7 @@ import path from "node:path";
 import { Command } from "commander";
 import type { CliOptions } from "./types.js";
 import { loadTranscriptFile } from "./transcriptInput.js";
-import { expandTheme, loadLexicFile } from "./theme.js";
+import { expandTheme, loadLexicFile, parseFieldSize, DEFAULT_FIELD_SIZE } from "./theme.js";
 import { analyze } from "./analyze.js";
 import {
   renderMarkdown,
@@ -24,6 +24,10 @@ program
   .option("--lexic <path>", "static wordlist file, overrides dynamic theme expansion")
   .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
   .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:3b)")
+  .option(
+    "--field-size <n>",
+    `number of words to keep when the model expands the theme (default: ${DEFAULT_FIELD_SIZE}); not usable with --lexic`,
+  )
   .option(
     "--saturation-low <pct>",
     "low boundary for lexical saturation, in percent (see INTENT.md)",
@@ -60,6 +64,19 @@ program
       program.error(
         "error: --saturation-low and --saturation-high must be percentages with 0 <= low < high <= 100",
       );
+    }
+
+    if (opts.fieldSize !== undefined && opts.lexic) {
+      program.error(
+        "error: --field-size sets how many words the model proposes, so it cannot be combined with --lexic " +
+          "(your wordlist is used as written)",
+      );
+    }
+    let fieldSize: number | undefined;
+    try {
+      fieldSize = parseFieldSize(opts.fieldSize);
+    } catch (err) {
+      program.error(`error: ${(err as Error).message}`);
     }
 
     const options: CliOptions = {
@@ -103,6 +120,7 @@ program
       : await expandTheme(options.theme!, {
           language: effectiveLanguage !== "unknown" ? effectiveLanguage : undefined,
           model: opts.model,
+          size: fieldSize,
         });
 
     if (field.isThin) {

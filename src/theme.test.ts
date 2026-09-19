@@ -3,7 +3,23 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { loadLexicFile, cleanExpandedTerms } from "./theme.js";
+import { loadLexicFile, cleanExpandedTerms, parseFieldSize } from "./theme.js";
+
+test("parseFieldSize returns undefined when the flag is absent", () => {
+  assert.equal(parseFieldSize(undefined), undefined);
+});
+
+test("parseFieldSize accepts whole numbers within the bounds", () => {
+  assert.equal(parseFieldSize("5"), 5);
+  assert.equal(parseFieldSize("25"), 25);
+  assert.equal(parseFieldSize("100"), 100);
+});
+
+test("parseFieldSize rejects out-of-range, fractional, and non-numeric values", () => {
+  for (const bad of ["4", "101", "2.5", "abc", "", "-10"]) {
+    assert.throws(() => parseFieldSize(bad), /--field-size must be a whole number from 5 to 100/, bad);
+  }
+});
 
 test("cleanExpandedTerms drops multi-word phrases", () => {
   assert.deepEqual(cleanExpandedTerms(["croissance", "croissance du secteur du travail", "impôt"]), [

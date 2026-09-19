@@ -136,13 +136,13 @@
       <p>Lincoln's Gettysburg Address (public domain) dedicates a battlefield cemetery. Suppose you suspect that religion runs through it. The first run uses the default model, which builds the vocabulary for you.</p>
       <figure class="run">
         <figcaption><code>$ at-field examples/gettysburg.txt --theme &quot;religion&quot;</code></figcaption>
-        <pre class="term" tabindex="0">Saturation [█░░░░░░░░░░░░░░░░░░░] 4% (1/23 terms, below the low boundary (10%))
+        <pre class="term" tabindex="0">Saturation [█░░░░░░░░░░░░░░░░░░░] 4% (1/25 terms, below the low boundary (10%))
 
 god ██████████████████████████████ 1</pre>
-        <p class="label">Field proposed by the model: 23 words, matches highlighted</p>
-        <p class="chips"><span class="chip hit">god</span> <span class="chip">sacred</span> <span class="chip">faith</span> <span class="chip">worship</span> <span class="chip">pagan</span> <span class="chip">reluctant</span> <span class="chip">miracle</span> <span class="chip">temple</span> <span class="chip">pilgrimage</span> <span class="chip">doctrine</span> <span class="chip">monk</span> <span class="chip">saint</span> <span class="chip">blessing</span> <span class="chip">pious</span> <span class="chip">venerate</span> <span class="chip">purgatory</span> <span class="chip">priest</span> <span class="chip">idol</span> <span class="chip">heretic</span> <span class="chip">orthodox</span> <span class="chip">mystic</span> <span class="chip">sacrament</span> <span class="chip">prophet</span></p>
+        <p class="label">Field proposed by the model: 25 words, matches highlighted</p>
+        <p class="chips"><span class="chip hit">god</span> <span class="chip">bible</span> <span class="chip">church</span> <span class="chip">sacred</span> <span class="chip">faith</span> <span class="chip">belief</span> <span class="chip">pagan</span> <span class="chip">religionist</span> <span class="chip">pilgrimage</span> <span class="chip">holy</span> <span class="chip">monk</span> <span class="chip">priest</span> <span class="chip">preacher</span> <span class="chip">temple</span> <span class="chip">mosque</span> <span class="chip">shrine</span> <span class="chip">catholic</span> <span class="chip">prophet</span> <span class="chip">zakat</span> <span class="chip">benediction</span> <span class="chip">worship</span> <span class="chip">saint</span> <span class="chip">sacrament</span> <span class="chip">hymn</span> <span class="chip">miracle</span></p>
       </figure>
-      <p>The model proposed 23 words and the speech uses one of them, "god". A score of 4% says religion is present and takes up little of the text.</p>
+      <p>The model proposed 25 words and the speech uses one of them, "god". A score of 4% says religion is present and takes up little of the text.</p>
       <p>If you already know which words you are looking for, hand them over as a wordlist with <code>--lexic</code>. The tool uses them as written.</p>
       <figure class="run">
         <figcaption><code>$ at-field examples/gettysburg.txt --theme &quot;religion&quot; --lexic examples/religion-words.txt</code></figcaption>
@@ -172,7 +172,8 @@ hallow     ███████████████ 1</pre>
 
       <h3>Getting a reliable reading</h3>
       <ul class="tips">
-        <li>Read the field before the score. The report lists every word the model proposed, so a missing word is easy to spot. A run for "war" on this same speech proposed "sanguinary" and "warlord" and left out "battle" and "fought", which the text contains. A wordlist supplies the missing words.</li>
+        <li>Read the field before the score. The report lists every word the model proposed, so a missing word is easy to spot. In the example above, the speech leans on "consecrate", "hallow" and "devotion", and the model proposed none of them. A wordlist supplies them, as in the second run.</li>
+        <li>Raise <code>--field-size</code> for a long transcript. A longer text has room for more of the theme's vocabulary, so a larger field measures it more finely. The default is 25 words.</li>
         <li>Choose the model for the language. The default, <code>qwen2.5:3b</code>, gave usable French fields in testing, where models under 1B parameters returned unusable ones. Change it with <code>--model</code>.</li>
         <li>Include the word forms you want. Matching is literal, so "jeu" and "jeux" are separate words.</li>
         <li>Set the boundaries for your material. The 10% and 70% defaults are starting points, adjustable with <code>--saturation-low</code> and <code>--saturation-high</code>.</li>

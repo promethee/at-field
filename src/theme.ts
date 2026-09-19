@@ -42,18 +42,38 @@ const THIN_FIELD_THRESHOLD = 8;
 // runaway.
 const MAX_EXPANSION_TOKENS = 1024;
 
-const FIELD_SCHEMA = {
-  type: "object",
-  properties: {
-    terms: {
-      type: "array",
-      items: { type: "string" },
-      minItems: 1,
-      maxItems: 40,
+// Words kept in the field unless --field-size says otherwise.
+export const DEFAULT_FIELD_SIZE = 25;
+// Bounds accepted for --field-size. The upper bound keeps the JSON answer
+// well inside MAX_EXPANSION_TOKENS (150 words is roughly 600 tokens).
+export const MIN_FIELD_SIZE = 5;
+export const MAX_FIELD_SIZE = 100;
+// The model is asked for this multiple of the field size, because the
+// post-filter removes a large share of what it returns.
+const REQUEST_MARGIN = 1.5;
+
+/**
+ * Validates the raw --field-size value. Returns undefined when the flag is
+ * absent (the default applies); throws with a user-facing message otherwise.
+ */
+export function parseFieldSize(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < MIN_FIELD_SIZE || n > MAX_FIELD_SIZE) {
+    throw new Error(`--field-size must be a whole number from ${MIN_FIELD_SIZE} to ${MAX_FIELD_SIZE}, got "${raw}"`);
+  }
+  return n;
+}
+
+function fieldSchema(maxItems: number) {
+  return {
+    type: "object",
+    properties: {
+      terms: { type: "array", items: { type: "string" }, minItems: 1, maxItems },
     },
-  },
-  required: ["terms"],
-} as const;
+    required: ["terms"],
+  } as const;
+}
 
 /**
  * Checks whether `model` is already pulled in the local Ollama install,
@@ -165,7 +185,7 @@ async function readGenerateStream(res: Response): Promise<string> {
  */
 export async function expandTheme(
   theme: string,
-  options: { language?: string; model?: string } = {},
+  options: { language?: string; model?: string; size?: number } = {},
 ): Promise<LexicalFieldResult> {
   const model = options.model ?? DEFAULT_MODEL;
   await ensureModelPulled(model);
@@ -180,15 +200,25 @@ export async function expandTheme(
     ? `Write every term in ${languageName}, even if the theme is given in another language. `
     : `Write the terms in the same language as the theme. `;
 
+  // Ask for more words than the field will hold: the post-filter below drops
+  // phrases, variants and the theme's own words (about a third of a 3B model's
+  // output in testing), then the field is trimmed to `size`.
+  const size = options.size ?? DEFAULT_FIELD_SIZE;
+  const requested = Math.ceil(size * REQUEST_MARGIN);
+
+  // Plain-words wording (tested against an earlier "commonly associated /
+  // clearly different" prompt on a 3B model): fields became readable
+  // everyday vocabulary (god, bible, pray, church) instead of rare words
+  // (eschatology, sacerdotal). The example theme is deliberately unrelated
+  // to anything a user is likely to analyse.
   const prompt =
-    `List the lexical field of the theme/topic "${theme}": single words commonly associated with it ` +
-    `(nouns, verbs, adjectives -- not just synonyms of the theme word itself). ` +
-    `Every entry must be exactly ONE word: no phrases, no expressions, no compound descriptions. ` +
-    `Every entry must be clearly different from the others: no variations, inflections or ` +
-    `rewordings of the same idea, and do not build entries by repeating the theme's own words. ` +
+    `List the lexical field of the theme "${theme}": the plain, everyday words a speaker or writer ` +
+    `on this theme would actually use, such as common nouns, verbs and adjectives. ` +
+    `For example, for the theme "cooking": stir, oven, recipe, boil, sharp, hungry. ` +
+    `Avoid rare, technical or literary words. Every entry is exactly one word. ` +
+    `Do not repeat the theme's own words. ` +
     languageRule +
-    `Return 15-30 terms if the theme is broad enough to support that many; ` +
-    `fewer is fine for a genuinely narrow theme.`;
+    `Give ${requested} words.`;
 
   let res: Response;
   try {
@@ -198,7 +228,7 @@ export async function expandTheme(
       body: JSON.stringify({
         model,
         prompt,
-        format: FIELD_SCHEMA,
+        format: fieldSchema(requested),
         stream: true,
         // Fixed seed: the same theme, model and language give the same field,
         // so a score can be compared between runs (Ollama's default gave a new
@@ -233,7 +263,7 @@ export async function expandTheme(
         `finishing). Try a narrower theme, or retry.`,
     );
   }
-  const terms = cleanExpandedTerms(parsed.terms, theme);
+  const terms = cleanExpandedTerms(parsed.terms, theme).slice(0, size);
 
   return {
     theme,

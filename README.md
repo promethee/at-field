@@ -43,6 +43,7 @@ Accepts `.srt`, `.vtt` (timestamps preserved in the report), or plain text (no t
 | `--lexic <path>` | — | Static wordlist file instead of dynamic theme expansion. `--theme` still anchors the analysis. |
 | `--language <code>` | auto-detected from transcript | Transcript's language, e.g. `en`, `fr`. Checked against `--theme`'s detected language. |
 | `--model <name>` | `qwen2.5:3b` | Ollama model for theme expansion. Offers to `ollama pull` it if missing. Smaller models (e.g. `qwen2.5:0.5b`) are faster but give poor fields outside English; larger ones (e.g. `mistral`) may do better in French. |
+| `--field-size <n>` | `25` | How many words to keep when the model expands the theme (5 to 100). Raise it for long transcripts. Cannot be combined with `--lexic`, which uses your list as written. |
 | `--saturation-low <pct>` | `10` | Low boundary for the saturation score, in percent. |
 | `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
 
