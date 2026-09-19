@@ -183,7 +183,7 @@ export async function expandTheme(
         `finishing). Try a narrower theme, or retry.`,
     );
   }
-  const terms = cleanExpandedTerms(parsed.terms);
+  const terms = cleanExpandedTerms(parsed.terms, theme);
 
   return {
     theme,
@@ -199,16 +199,21 @@ export async function expandTheme(
  * words only" instruction often enough (real French testing returned
  * phrases like "croissance du secteur du travail") that this is enforced
  * here rather than trusted to the prompt. Also dedupes case- and
- * accent-insensitively. Dynamic expansion only -- --lexic lists are the
- * user's own and left untouched.
+ * accent-insensitively, and drops any of the theme's own words: a hit on
+ * the theme's own vocabulary would inflate saturation with evidence the
+ * theme already implies (circular -- see INTENT.md). Dynamic expansion
+ * only -- --lexic lists are the user's own and left untouched.
  */
-export function cleanExpandedTerms(raw: string[]): string[] {
+export function cleanExpandedTerms(raw: string[], theme = ""): string[] {
+  const fold = (s: string) => s.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
+  const themeWords = new Set(fold(theme).split(/[^\p{L}\p{N}]+/u).filter(Boolean));
   const seen = new Set<string>();
   const out: string[] = [];
   for (const t of raw) {
     const term = t.trim();
     if (!term || /\s/.test(term)) continue;
-    const key = term.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
+    const key = fold(term);
+    if (themeWords.has(key)) continue;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(term);
@@ -219,7 +224,7 @@ export function cleanExpandedTerms(raw: string[]): string[] {
 /**
  * Loads a static wordlist file (one term per line) as the lexical field's
  * terms, bypassing dynamic LLM expansion. `theme` is still required and
- * still anchors the analysis (obviousness score, disclaimers) — --lexic
+ * still anchors the analysis (saturation score, disclaimers) — --lexic
  * only changes where the terms come from, never what's being analyzed for.
  */
 export async function loadLexicFile(filePath: string, theme: string): Promise<LexicalFieldResult> {

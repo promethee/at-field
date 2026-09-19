@@ -36,44 +36,37 @@ function computeSegmentHits(transcript: TranscriptResult, field: LexicalFieldRes
 }
 
 /**
- * Cross-references the lexical field against the transcript, counts term
- * matches, computes the obviousness score, and locates per-segment hits.
+ * Cross-references the lexical field against the transcript and computes
+ * lexical saturation: distinct field terms found / field size. It measures
+ * how much of the theme's *vocabulary* shows up in the text, independent of
+ * whether the theme word itself is ever spoken -- the earlier
+ * "obviousness" ratio (literal theme hits / all hits) read 0% for texts
+ * that clearly touched the theme (see INTENT.md). Density (matches per
+ * 1,000 words) is reported alongside because coverage alone can't tell a
+ * passing mention from a pervasive one in a long transcript.
  *
- * obviousnessScore = literal theme-term matches / total field matches
- * (literal theme matches + every other field term's matches combined).
- *
- * Rationale: if most of the field's presence in the transcript is just the
- * theme word itself repeated, the audio is stating its subject outright
- * (high obviousness -- low analytical value, see INTENT.md). If matches
- * spread across the broader field with few literal mentions of the theme
- * word, the theme runs through the content without being its stated
- * subject (low obviousness -- the tool's actual value case).
- *
- * 0 total matches -> score is 0 (no evidence of the theme either way,
- * distinct from "obviously not obvious").
+ * Empty field -> saturation 0 (nothing to measure against).
  */
 export async function analyze(
   transcript: TranscriptResult,
   field: LexicalFieldResult,
 ): Promise<AnalysisResult> {
-  const literalThemeMatches = countOccurrences(transcript.text, field.theme);
-
   const matches = field.terms
     .map((term) => ({ term, count: countOccurrences(transcript.text, term) }))
     .filter((m) => m.count > 0)
     .sort((a, b) => b.count - a.count);
 
-  const otherFieldMatches = matches
-    .filter((m) => m.term.toLowerCase() !== field.theme.toLowerCase())
-    .reduce((sum, m) => sum + m.count, 0);
-
-  const totalMatches = literalThemeMatches + otherFieldMatches;
-  const obviousnessScore = totalMatches === 0 ? 0 : literalThemeMatches / totalMatches;
+  const fieldSize = field.terms.length;
+  const totalMatches = matches.reduce((sum, m) => sum + m.count, 0);
+  const wordCount = transcript.text.split(/\s+/).filter(Boolean).length;
 
   return {
     transcript,
     field,
-    obviousnessScore,
+    saturation: fieldSize === 0 ? 0 : matches.length / fieldSize,
+    termsFound: matches.length,
+    fieldSize,
+    matchesPer1000Words: wordCount === 0 ? 0 : (totalMatches / wordCount) * 1000,
     matches,
     segmentHits: computeSegmentHits(transcript, field),
   };

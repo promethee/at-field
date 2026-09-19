@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderMarkdown, renderTerminalGraphic, computeObviousnessStep } from "./report.js";
+import { renderMarkdown, renderTerminalGraphic, saturationPosition } from "./report.js";
 import type { AnalysisResult } from "./types.js";
 
 function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
@@ -11,7 +11,10 @@ function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
       segments: [],
     },
     field: { theme: "dogs", terms: ["paw", "leash", "breed"], isThin: false },
-    obviousnessScore: 0.2,
+    saturation: 0.2,
+    termsFound: 1,
+    fieldSize: 5,
+    matchesPer1000Words: 3.5,
     matches: [
       { term: "paw", count: 3 },
       { term: "leash", count: 1 },
@@ -21,35 +24,15 @@ function baseResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
   };
 }
 
-test("computeObviousnessStep divides the range evenly (default 2 steps)", () => {
-  assert.deepEqual(computeObviousnessStep(0.2), { step: 1, totalSteps: 2, rangeStart: 0, rangeEnd: 0.5 });
-  assert.deepEqual(computeObviousnessStep(0.8), { step: 2, totalSteps: 2, rangeStart: 0.5, rangeEnd: 1 });
+test("saturationPosition places a score below, between, or above the boundaries", () => {
+  assert.equal(saturationPosition(0.05, 10, 70), "below");
+  assert.equal(saturationPosition(0.4, 10, 70), "between");
+  assert.equal(saturationPosition(0.9, 10, 70), "above");
 });
 
-test("computeObviousnessStep handles exact boundary at score 1.0 without overflowing", () => {
-  const result = computeObviousnessStep(1.0, 4);
-  assert.equal(result.step, 4);
-  assert.equal(result.totalSteps, 4);
-});
-
-test("computeObviousnessStep handles score 0 as the first step", () => {
-  const result = computeObviousnessStep(0, 4);
-  assert.equal(result.step, 1);
-});
-
-test("computeObviousnessStep supports arbitrary step counts", () => {
-  const result = computeObviousnessStep(0.6, 5);
-  // 0.6 * 5 = 3.0 -> floor = 3 -> step index 3 -> step 4/5, band 60-80%
-  assert.equal(result.step, 4);
-  assert.equal(result.totalSteps, 5);
-  assert.equal(result.rangeStart, 0.6);
-  assert.equal(result.rangeEnd, 0.8);
-});
-
-test("computeObviousnessStep rejects a non-positive-integer step count", () => {
-  assert.throws(() => computeObviousnessStep(0.5, 0), /positive integer/);
-  assert.throws(() => computeObviousnessStep(0.5, 1.5), /positive integer/);
-  assert.throws(() => computeObviousnessStep(0.5, -1), /positive integer/);
+test("saturationPosition treats a score exactly on a boundary as between", () => {
+  assert.equal(saturationPosition(0.1, 10, 70), "between");
+  assert.equal(saturationPosition(0.7, 10, 70), "between");
 });
 
 test("renderMarkdown includes the theme in the title", () => {
@@ -57,15 +40,21 @@ test("renderMarkdown includes the theme in the title", () => {
   assert.match(md, /# Thematic Analysis: "dogs"/);
 });
 
-test("renderMarkdown shows the obviousness score as a percentage and step", () => {
-  const md = renderMarkdown(baseResult({ obviousnessScore: 0.42 }));
-  assert.match(md, /\*\*42%\*\*/);
-  assert.match(md, /step 1\/2 \(band: 0%–50%\)/);
+test("renderMarkdown shows saturation as a percentage with terms found and density", () => {
+  const md = renderMarkdown(baseResult({ saturation: 0.42, termsFound: 21, fieldSize: 50, matchesPer1000Words: 12.34 }));
+  assert.match(md, /## Lexical saturation/);
+  assert.match(md, /\*\*42%\*\* — 21 of 50 field terms found, 12\.3 matches per 1,000 words\./);
 });
 
-test("renderMarkdown respects a custom obviousnessSteps option", () => {
-  const md = renderMarkdown(baseResult({ obviousnessScore: 0.6 }), { obviousnessSteps: 4 });
-  assert.match(md, /step 3\/4 \(band: 50%–75%\)/);
+test("renderMarkdown states the position against the default 10%/70% boundaries", () => {
+  assert.match(renderMarkdown(baseResult({ saturation: 0.05 })), /below the low boundary \(10%\)/);
+  assert.match(renderMarkdown(baseResult({ saturation: 0.4 })), /between the boundaries \(10%–70%\)/);
+  assert.match(renderMarkdown(baseResult({ saturation: 0.9 })), /above the high boundary \(70%\)/);
+});
+
+test("renderMarkdown respects custom saturation boundaries", () => {
+  const md = renderMarkdown(baseResult({ saturation: 0.4 }), { saturationLow: 50, saturationHigh: 90 });
+  assert.match(md, /below the low boundary \(50%\)/);
 });
 
 test("renderMarkdown includes a thin-field disclaimer only when isThin is true", () => {
@@ -154,22 +143,23 @@ test("renderMarkdown formats hour-scale timestamps as HH:MM:SS", () => {
   assert.match(md, /\[01:02:03–01:02:10\]: paw/);
 });
 
-test("renderTerminalGraphic includes a percentage, gauge, and step", () => {
-  const graphic = renderTerminalGraphic(baseResult({ obviousnessScore: 0.5 }));
+test("renderTerminalGraphic includes a percentage, gauge, term counts, and position", () => {
+  const graphic = renderTerminalGraphic(baseResult({ saturation: 0.5, termsFound: 5, fieldSize: 10 }));
   assert.match(graphic, /50%/);
-  assert.match(graphic, /step 2\/2/);
+  assert.match(graphic, /5\/10 terms/);
+  assert.match(graphic, /between the boundaries \(10%–70%\)/);
   assert.match(graphic, /█+░+|░+█+|█+/);
 });
 
-test("renderTerminalGraphic respects a custom obviousnessSteps option", () => {
-  const graphic = renderTerminalGraphic(baseResult({ obviousnessScore: 0.6 }), { obviousnessSteps: 4 });
-  assert.match(graphic, /step 3\/4/);
+test("renderTerminalGraphic respects custom saturation boundaries", () => {
+  const graphic = renderTerminalGraphic(baseResult({ saturation: 0.5 }), { saturationLow: 60, saturationHigh: 90 });
+  assert.match(graphic, /below the low boundary \(60%\)/);
 });
 
 test("renderTerminalGraphic omits the bar chart when there are no matches", () => {
   const graphic = renderTerminalGraphic(baseResult({ matches: [] }));
   assert.doesNotMatch(graphic, /█.*\d+$/m);
-  assert.match(graphic, /Obviousness/);
+  assert.match(graphic, /Saturation/);
 });
 
 test("renderTerminalGraphic caps bar rows at 10 and notes the remainder", () => {

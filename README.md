@@ -8,9 +8,11 @@ at-field transcript.srt --theme "economy"
 
 Bring your own transcript — `whisper.cpp`, a paid transcription service, YouTube captions, whatever already works for you. `at-field` doesn't transcribe anything itself.
 
-## Why an obviousness score
+## Reading the score
 
-Works best on a theme that *isn't* the transcript's obvious subject — e.g. "economy" running through a nature documentary, or "conflict" through a cooking show. Every run reports an **obviousness score**: high means the theme is basically the stated topic (expected, less interesting), low means it found the theme running quietly underneath.
+Every run reports a **lexical saturation** score: how much of the theme's vocabulary shows up in the transcript (distinct field terms found ÷ field size), with the raw counts and a matches-per-1,000-words density beside it. Works best on a theme that *isn't* the transcript's obvious subject — e.g. "economy" running through a nature documentary, or "conflict" through a cooking show.
+
+The report says whether the score sits below, between, or above two boundaries (default 10% and 70%). The defaults are arbitrary — set your own with `--saturation-low` / `--saturation-high`. What a position means is up to you.
 
 ## Install
 
@@ -41,7 +43,8 @@ Accepts `.srt`, `.vtt` (timestamps preserved in the report), or plain text (no t
 | `--lexic <path>` | — | Static wordlist file instead of dynamic theme expansion. `--theme` still anchors the analysis. |
 | `--language <code>` | auto-detected from transcript | Transcript's language, e.g. `en`, `fr`. Checked against `--theme`'s detected language. |
 | `--model <name>` | `qwen2.5:0.5b` | Ollama model for theme expansion. The default is tiny and fast but weak outside English — for other languages try a larger one (e.g. `qwen2.5:3b`). Offers to `ollama pull` it if missing. |
-| `--obviousness-steps <n>` | `2` | Divide the obviousness score into `n` equal bands (no semantic labels — raw % is always shown too). |
+| `--saturation-low <pct>` | `10` | Low boundary for the saturation score, in percent. |
+| `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
 
 Each run writes a Markdown report next to the input transcript.
 

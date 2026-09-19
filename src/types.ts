@@ -36,8 +36,14 @@ export interface SegmentHit {
 export interface AnalysisResult {
   transcript: TranscriptResult;
   field: LexicalFieldResult;
-  /** 0..1 — how much the theme overlaps with the transcript's stated/obvious subject */
-  obviousnessScore: number;
+  /** 0..1 — distinct field terms found in the transcript / field size */
+  saturation: number;
+  /** distinct field terms found (numerator of saturation) */
+  termsFound: number;
+  /** number of terms in the lexical field (denominator of saturation) */
+  fieldSize: number;
+  /** total field-term matches per 1,000 transcript words */
+  matchesPer1000Words: number;
   matches: Array<{ term: string; count: number }>;
   /** one entry per segment that contains at least one field-term hit */
   segmentHits: SegmentHit[];

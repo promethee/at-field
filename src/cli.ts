@@ -6,7 +6,12 @@ import type { CliOptions } from "./types.js";
 import { loadTranscriptFile } from "./transcriptInput.js";
 import { expandTheme, loadLexicFile } from "./theme.js";
 import { analyze } from "./analyze.js";
-import { renderMarkdown, renderTerminalGraphic, DEFAULT_OBVIOUSNESS_STEPS } from "./report.js";
+import {
+  renderMarkdown,
+  renderTerminalGraphic,
+  DEFAULT_SATURATION_LOW,
+  DEFAULT_SATURATION_HIGH,
+} from "./report.js";
 import { buildOutputPaths } from "./output.js";
 import { checkLanguageMatch, detectLanguageCode } from "./language.js";
 import { confirm } from "./confirm.js";
@@ -22,9 +27,14 @@ program
   .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
   .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:0.5b)")
   .option(
-    "--obviousness-steps <n>",
-    "divide the obviousness score into n equal bands (no semantic labels, see INTENT.md)",
-    String(DEFAULT_OBVIOUSNESS_STEPS),
+    "--saturation-low <pct>",
+    "low boundary for lexical saturation, in percent (see INTENT.md)",
+    String(DEFAULT_SATURATION_LOW),
+  )
+  .option(
+    "--saturation-high <pct>",
+    "high boundary for lexical saturation, in percent (see INTENT.md)",
+    String(DEFAULT_SATURATION_HIGH),
   )
   .action(async (transcriptArg: string, opts: Record<string, string>) => {
     // Resolved to absolute immediately -- output paths and the report's
@@ -38,6 +48,20 @@ program
 
     if (!fs.existsSync(transcriptPath)) {
       program.error(`error: transcript file not found: ${transcriptPath}`);
+    }
+
+    const saturationLow = Number(opts.saturationLow);
+    const saturationHigh = Number(opts.saturationHigh);
+    if (
+      !Number.isFinite(saturationLow) ||
+      !Number.isFinite(saturationHigh) ||
+      saturationLow < 0 ||
+      saturationHigh > 100 ||
+      saturationLow >= saturationHigh
+    ) {
+      program.error(
+        "error: --saturation-low and --saturation-high must be percentages with 0 <= low < high <= 100",
+      );
     }
 
     const options: CliOptions = {
@@ -121,9 +145,8 @@ program
     // --- Analysis + report ---------------------------------------------
 
     const result = await analyze(transcript, field);
-    const obviousnessSteps = Number(opts.obviousnessSteps) || DEFAULT_OBVIOUSNESS_STEPS;
     const outputPaths = buildOutputPaths(transcriptPath, options.theme!);
-    const renderOptions = { obviousnessSteps, transcriptFileName: path.basename(transcriptPath) };
+    const renderOptions = { saturationLow, saturationHigh, transcriptFileName: path.basename(transcriptPath) };
     const markdown = renderMarkdown(result, renderOptions);
 
     fs.writeFileSync(outputPaths.reportPath, markdown, "utf-8");

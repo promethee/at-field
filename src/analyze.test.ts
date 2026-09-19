@@ -11,28 +11,48 @@ function field(theme: string, terms: string[]): LexicalFieldResult {
   return { theme, terms, isThin: terms.length < 8 };
 }
 
-test("high obviousness: theme word dominates, few related terms", async () => {
-  const t = transcript("dogs dogs dogs are great pets. dogs dogs dogs dogs.");
-  const f = field("dogs", ["paw", "leash", "breed"]);
+test("saturation is distinct field terms found / field size", async () => {
+  const t = transcript("the budget and the cost were discussed, but never any profit.");
+  const f = field("economy", ["budget", "cost", "profit", "tax", "wage"]);
   const result = await analyze(t, f);
-  assert.equal(result.obviousnessScore, 1);
+  assert.equal(result.termsFound, 3);
+  assert.equal(result.fieldSize, 5);
+  assert.equal(result.saturation, 0.6);
 });
 
-test("low obviousness: related terms dominate, theme word rare", async () => {
-  const t = transcript(
-    "the budget was tight so we tracked cost carefully and tried to afford better ingredients on a shoestring.",
-  );
-  const f = field("economy", ["budget", "cost", "afford", "shoestring"]);
+test("saturation counts each distinct term once, however often it occurs", async () => {
+  const t = transcript("paw paw paw paw paw leash");
+  const f = field("dogs", ["paw", "leash", "kennel", "breed"]);
   const result = await analyze(t, f);
-  assert.ok(result.obviousnessScore < 0.5, `expected < 0.5, got ${result.obviousnessScore}`);
+  assert.equal(result.saturation, 0.5);
 });
 
-test("zero matches yields obviousness score of 0", async () => {
+test("saturation does not depend on the literal theme word being spoken", async () => {
+  const t = transcript("the budget was tight so we tracked cost and hunted for a bargain.");
+  const f = field("economy", ["budget", "cost", "bargain"]);
+  const result = await analyze(t, f);
+  assert.equal(result.saturation, 1);
+});
+
+test("zero matches yields saturation of 0", async () => {
   const t = transcript("completely unrelated content about weather and clouds.");
   const f = field("finance", ["stock", "bond", "interest"]);
   const result = await analyze(t, f);
-  assert.equal(result.obviousnessScore, 0);
+  assert.equal(result.saturation, 0);
   assert.deepEqual(result.matches, []);
+});
+
+test("an empty field yields saturation of 0 instead of dividing by zero", async () => {
+  const result = await analyze(transcript("anything at all"), field("dogs", []));
+  assert.equal(result.saturation, 0);
+  assert.equal(result.fieldSize, 0);
+});
+
+test("matchesPer1000Words scales total matches by transcript length", async () => {
+  // 10 words, 2 matches -> 200 per 1,000
+  const t = transcript("paw one two three leash five six seven eight nine");
+  const result = await analyze(t, field("dogs", ["paw", "leash"]));
+  assert.equal(result.matchesPer1000Words, 200);
 });
 
 test("matches are sorted by count descending and exclude zero-count terms", async () => {
@@ -55,9 +75,9 @@ test("multi-word terms match via word boundaries", async () => {
 
 test("matching is case-insensitive", async () => {
   const t = transcript("DOGS are loyal. Dogs bark.");
-  const f = field("dogs", []);
+  const f = field("dogs", ["dogs"]);
   const result = await analyze(t, f);
-  assert.equal(result.obviousnessScore, 1);
+  assert.equal(result.matches[0].count, 2);
 });
 
 test("segmentHits: only segments containing a hit are included", async () => {

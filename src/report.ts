@@ -1,45 +1,29 @@
 import type { AnalysisResult } from "./types.js";
 
-export const DEFAULT_OBVIOUSNESS_STEPS = 2;
+// Arbitrary, disclosed defaults (percent). Meant to be overridden by users
+// who know their material -- see INTENT.md. Low: below it a theme is barely
+// touched. High: above it the field dominates the content.
+export const DEFAULT_SATURATION_LOW = 10;
+export const DEFAULT_SATURATION_HIGH = 70;
 
-export interface ObviousnessStep {
-  step: number;
-  totalSteps: number;
-  /** 0..1 */
-  rangeStart: number;
-  /** 0..1 */
-  rangeEnd: number;
-}
+export type SaturationPosition = "below" | "between" | "above";
 
 /**
- * Divides the 0..1 obviousness score into `steps` equal-width bands and
- * reports which one the score falls in. No semantic labels ("High" /
- * "Moderate" / "Low") -- those require a judgment call about what counts
- * as "obvious" that varies by content domain and audience, and every
- * attempt at a fixed default (3-band, 4-band, threshold) turned out to be
- * an unconfirmed guess. Even division sidesteps needing one: the user
- * picks their own granularity via --obviousness-steps, the raw percentage
- * is always shown alongside it regardless of steps chosen. See INTENT.md
- * for the fuller reasoning and the deferred v2 idea (user-tunable
- * semantic bands, if real usage feedback ever asks for it).
+ * Where a 0..1 saturation score sits relative to the two boundaries
+ * (percent). Purely positional -- no "High"/"Low" verdict; what a position
+ * means is the user's call (see INTENT.md).
  */
-export function computeObviousnessStep(score: number, steps: number = DEFAULT_OBVIOUSNESS_STEPS): ObviousnessStep {
-  if (!Number.isInteger(steps) || steps < 1) {
-    throw new Error(`obviousness-steps must be a positive integer, got ${steps}`);
-  }
-  const index = Math.min(steps - 1, Math.floor(score * steps));
-  return {
-    step: index + 1,
-    totalSteps: steps,
-    rangeStart: index / steps,
-    rangeEnd: (index + 1) / steps,
-  };
+export function saturationPosition(score: number, low: number, high: number): SaturationPosition {
+  const pct = score * 100;
+  if (pct < low) return "below";
+  if (pct > high) return "above";
+  return "between";
 }
 
-function formatObviousnessStep(step: ObviousnessStep): string {
-  const start = Math.round(step.rangeStart * 100);
-  const end = Math.round(step.rangeEnd * 100);
-  return `step ${step.step}/${step.totalSteps} (band: ${start}%–${end}%)`;
+function describePosition(position: SaturationPosition, low: number, high: number): string {
+  if (position === "below") return `below the low boundary (${low}%)`;
+  if (position === "above") return `above the high boundary (${high}%)`;
+  return `between the boundaries (${low}%–${high}%)`;
 }
 
 export function formatTimestamp(seconds: number): string {
@@ -51,7 +35,10 @@ export function formatTimestamp(seconds: number): string {
 }
 
 export interface RenderOptions {
-  obviousnessSteps?: number;
+  /** percent, 0..100 */
+  saturationLow?: number;
+  /** percent, 0..100 */
+  saturationHigh?: number;
   /** filename of the original input transcript, for the report to link back to */
   transcriptFileName?: string;
 }
@@ -62,17 +49,19 @@ export interface RenderOptions {
  * timestamped log -> full field -> transcript (linked, not embedded).
  */
 export function renderMarkdown(result: AnalysisResult, options: RenderOptions = {}): string {
-  const { field, transcript, obviousnessScore, matches, segmentHits } = result;
-  const steps = options.obviousnessSteps ?? DEFAULT_OBVIOUSNESS_STEPS;
+  const { field, transcript, saturation, termsFound, fieldSize, matchesPer1000Words, matches, segmentHits } = result;
+  const low = options.saturationLow ?? DEFAULT_SATURATION_LOW;
+  const high = options.saturationHigh ?? DEFAULT_SATURATION_HIGH;
   const lines: string[] = [];
 
   lines.push(`# Thematic Analysis: "${field.theme}"`, "");
 
-  lines.push("## Obviousness score", "");
+  lines.push("## Lexical saturation", "");
   lines.push(
-    `**${Math.round(obviousnessScore * 100)}%** — ${formatObviousnessStep(computeObviousnessStep(obviousnessScore, steps))}`,
+    `**${Math.round(saturation * 100)}%** — ${termsFound} of ${fieldSize} field terms found, ${matchesPer1000Words.toFixed(1)} matches per 1,000 words.`,
     "",
   );
+  lines.push(`Position: ${describePosition(saturationPosition(saturation, low, high), low, high)}.`, "");
 
   lines.push("## Disclaimers", "");
   lines.push(
@@ -133,20 +122,22 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
 }
 
 /**
- * Renders a plain-ASCII terminal summary: obviousness score as a text
+ * Renders a plain-ASCII terminal summary: saturation score as a text
  * gauge, top matches as scaled bar rows. No chart dependency, matches the
  * project's minimal-footprint stance.
  */
 export function renderTerminalGraphic(result: AnalysisResult, options: RenderOptions = {}): string {
-  const { obviousnessScore, matches } = result;
-  const steps = options.obviousnessSteps ?? DEFAULT_OBVIOUSNESS_STEPS;
+  const { saturation, termsFound, fieldSize, matches } = result;
+  const low = options.saturationLow ?? DEFAULT_SATURATION_LOW;
+  const high = options.saturationHigh ?? DEFAULT_SATURATION_HIGH;
   const lines: string[] = [];
 
   const gaugeWidth = 20;
-  const filled = Math.round(obviousnessScore * gaugeWidth);
+  const filled = Math.round(saturation * gaugeWidth);
   const gauge = "█".repeat(filled) + "░".repeat(gaugeWidth - filled);
-  const step = computeObviousnessStep(obviousnessScore, steps);
-  lines.push(`Obviousness [${gauge}] ${Math.round(obviousnessScore * 100)}% (${formatObviousnessStep(step)})`);
+  lines.push(
+    `Saturation [${gauge}] ${Math.round(saturation * 100)}% (${termsFound}/${fieldSize} terms, ${describePosition(saturationPosition(saturation, low, high), low, high)})`,
+  );
 
   if (matches.length > 0) {
     lines.push("");

@@ -16,6 +16,13 @@ test("cleanExpandedTerms dedupes case- and accent-insensitively, keeping the fir
   assert.deepEqual(cleanExpandedTerms(["Économie", "economie", "ÉCONOMIE", "budget"]), ["Économie", "budget"]);
 });
 
+test("cleanExpandedTerms drops the theme's own words, accent- and case-insensitively", () => {
+  assert.deepEqual(cleanExpandedTerms(["Économie", "budget", "guerre", "diplomatie"], "économie de guerre"), [
+    "budget",
+    "diplomatie",
+  ]);
+});
+
 test("cleanExpandedTerms trims and drops empty entries", () => {
   assert.deepEqual(cleanExpandedTerms(["  paw ", "", "   "]), ["paw"]);
 });
