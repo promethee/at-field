@@ -1,22 +1,26 @@
 # at-field
 
-`at-field` takes a transcript you already have and scores how much a theme's lexical field runs through it (e.g. `--theme "animals"`).
+`at-field` measures how much of a theme's vocabulary a transcript uses. Give it a transcript and a theme, for example `--theme "animals"`, and it returns a score with the matches behind it.
 
 ```bash
 at-field transcript.srt --theme "economy"
 ```
 
-Bring your own transcript — `whisper.cpp`, a paid transcription service, YouTube captions, whatever already works for you. `at-field` doesn't transcribe anything itself.
+![Terminal replay: at-field on the Gettysburg Address for the theme "religion", first with a wordlist (5 of 12 words found, 42%), then with the model's field (1 of 25 words found, 4%).](docs/demo.svg)
+
+*A replay of two real runs. The model's wait and the report path are trimmed.*
+
+Transcripts can come from any tool: `whisper.cpp`, a transcription service, YouTube captions. at-field starts from the text.
 
 ## Reading the score
 
-Every run reports a **lexical saturation** score: how much of the theme's vocabulary shows up in the transcript (distinct field terms found ÷ field size), with the raw counts and a matches-per-1,000-words density beside it. Works best on a theme that *isn't* the transcript's obvious subject — e.g. "economy" running through a nature documentary, or "conflict" through a cooking show.
+Every run reports a **lexical saturation** score: the share of the theme's vocabulary that shows up in the transcript (distinct field words found ÷ field size), with the raw counts and a matches-per-1,000-words density beside it. It works best on a theme that sits beneath the transcript's subject, such as economy in a nature documentary or conflict in a cooking show.
 
-The report says whether the score sits below, between, or above two boundaries (default 10% and 70%). The defaults are arbitrary — set your own with `--saturation-low` / `--saturation-high`. What a position means is up to you.
+The report says whether the score falls below, between, or above two boundaries (default 10% and 70%). The defaults are arbitrary starting points; set your own with `--saturation-low` and `--saturation-high`. What a position means is up to you.
 
 ## Install
 
-Requires Node.js 22+ and [Ollama](https://ollama.com) running locally (theme expansion uses it to build the lexical field — nothing bundled, no API key).
+Requires Node.js 22+ and [Ollama](https://ollama.com) running locally. Ollama expands the theme into a lexical field; nothing is bundled and no API key is needed.
 
 ```bash
 ollama pull qwen2.5:3b
@@ -27,7 +31,7 @@ npm run build
 npm link
 ```
 
-`at-field` talks to Ollama's default local server (`http://localhost:11434`); override with the `OLLAMA_HOST` env var if yours runs elsewhere.
+`at-field` talks to Ollama's default local server (`http://localhost:11434`). Set the `OLLAMA_HOST` env var if yours runs elsewhere.
 
 ## Usage
 
@@ -35,33 +39,40 @@ npm link
 at-field <transcript-file> --theme "<theme>" [options]
 ```
 
-Accepts `.srt`, `.vtt` (timestamps preserved in the report), or plain text (no timestamps).
+Accepts `.srt` and `.vtt` (timestamps are kept in the report) or plain text (no timestamps).
 
 | Flag | Default | Description |
 |---|---|---|
 | `--theme <value>` | *(required)* | Theme to expand into a lexical field and score against the transcript. |
-| `--lexic <path>` | — | Static wordlist file instead of dynamic theme expansion. `--theme` still anchors the analysis. |
-| `--language <code>` | auto-detected from transcript | Transcript's language, e.g. `en`, `fr`. Checked against `--theme`'s detected language. |
-| `--model <name>` | `qwen2.5:3b` | Ollama model for theme expansion. Offers to `ollama pull` it if missing. Smaller models (e.g. `qwen2.5:0.5b`) are faster but give poor fields outside English; larger ones (e.g. `mistral`) may do better in French. |
-| `--field-size <n>` | `25` | How many words to keep when the model expands the theme (5 to 100). Raise it for long transcripts. Cannot be combined with `--lexic`, which uses your list as written. |
+| `--lexic <path>` | none | Wordlist file to use instead of model expansion, used as written. `--theme` still names the analysis. |
+| `--language <code>` | detected from the transcript | Transcript's language, for example `en` or `fr`. The lexical field is written in this language. |
+| `--model <name>` | `qwen2.5:3b` | Ollama model for theme expansion. Offers to `ollama pull` it when missing. Smaller models such as `qwen2.5:0.5b` run faster and give weaker fields outside English. Larger ones such as `mistral` may do better in French. |
+| `--field-size <n>` | `25` | How many words to keep when the model expands the theme (5 to 100). Raise it for long transcripts. Cannot be combined with `--lexic`. |
 | `--saturation-low <pct>` | `10` | Low boundary for the saturation score, in percent. |
 | `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
+| `--verbose` | off | Also print the full Markdown report and the long limitation notices. |
+| `--quiet` | off | Print only the report path. Cannot be combined with `--verbose`. |
 
 Each run writes a Markdown report next to the input transcript.
 
 ## Philosophy
 
-Every limitation (transcript source, thin field, missing timestamps) is printed, never gated behind a confirmation. Theme expansion runs through a local Ollama server — no cloud API calls, no per-run cost. Output is Markdown.
+Limitations that apply to a run (missing timestamps, a thin field) print as one notes line, and the report file carries the full disclaimers, including that accuracy depends on the tool that made the transcript. Progress and notes go to stderr, so stdout can be piped. Theme expansion runs through a local Ollama server, with no cloud API calls and no per-run cost. Output is Markdown.
 
-## What this isn't
+## Scope
 
-Not a summarizer. Not a transcription tool — bring your own transcript. Not a research workspace — no saved projects, no cross-run memory. No theme-discovery — you supply `--theme` yourself. One transcript per run: point it at one file, get one report.
+at-field measures one theme in one transcript per run and writes one report. Other jobs belong to other tools: a summarizer for what a text covers, a transcription tool such as Whisper or Vibe for audio, and a topic-modelling tool for discovering themes. It keeps no project state between runs.
 
 ## Known limitations
 
-- The lexical field is written in the transcript's language (auto-detected, or set with `--language`), so `--theme` can be in any language. How good that field is depends on the model: small models are weak outside English, hence the `qwen2.5:3b` default.
-- Plain-text input has no segment timing, so the report's timestamped-occurrence log will be empty. Use `.srt`/`.vtt` input to keep it.
-- Fewer than 8 terms in the expanded lexical field triggers a thin-field notice — results may look more like keyword-spotting than a broad thematic read.
+- The lexical field is written in the transcript's language (detected, or set with `--language`), so `--theme` can be in any language. Field quality depends on the model, and small models are weak outside English, which is why `qwen2.5:3b` is the default.
+- Matching is literal. A word matches only in the form listed, so "jeu" and "jeux" count separately. Include the forms you want through `--lexic`.
+- Plain-text input carries no timing, so the timestamped-occurrence log is empty. Use `.srt` or `.vtt` input to keep it.
+- A field under 8 words triggers a thin-field notice, since the result then reads more like keyword spotting than a broad thematic measure.
+
+## Performance
+
+Theme expansion is the slow step, and its speed depends on the hardware running Ollama. Ollama uses a supported GPU automatically, and a GPU is recommended if you run at-field often. On a CPU-only machine, the default 3B model took about 2 to 5 minutes per run in testing. A smaller model (`--model qwen2.5:0.5b`) runs faster and gives weaker fields outside English. A wordlist (`--lexic`) skips expansion and answers in seconds.
 
 ## License
 
@@ -69,4 +80,4 @@ MIT
 
 ## Made with AI, designed by human
 
-Built through pairing with Claude Code. Every design decision, trade-off, and rejected alternative is human-made and recorded in `INTENT.md`; the AI handled implementation.
+Built through pairing with Claude Code. A human made every design decision, trade-off and rejected alternative, all recorded in `INTENT.md`; the AI handled implementation.

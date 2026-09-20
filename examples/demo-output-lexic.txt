@@ -1,0 +1,10 @@
+Notes: plain-text input has no timestamps
+Saturation [████████░░░░░░░░░░░░] 42% (5/12 terms, between the boundaries (10%–70%))
+
+devotion   ██████████████████████████████ 2
+dedicate   ██████████████████████████████ 2
+god        ███████████████ 1
+consecrate ███████████████ 1
+hallow     ███████████████ 1
+
+Written: examples\gettysburg.religion.b12a7927.md

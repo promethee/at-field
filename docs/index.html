@@ -68,6 +68,10 @@
     .links a.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
     @media (prefers-color-scheme: dark) { .links a.primary { color: #0b1512; } }
 
+    figure.demo { margin: 2.2rem 0 0; }
+    figure.demo img { display: block; width: 100%; height: auto; border-radius: 10px; }
+    figure.demo figcaption { margin-top: 0.55rem; color: var(--muted); font-size: 0.88rem; }
+
     section { padding: 2.75rem 0 0.5rem; }
     h2 { margin: 0 0 1rem; font-size: 1.5rem; line-height: 1.25; letter-spacing: -0.01em; }
     h3 { margin: 1.6rem 0 0.35rem; font-size: 1.08rem; line-height: 1.35; }
@@ -111,6 +115,10 @@
         <li><a href="https://github.com/promethee/at-field#readme">README</a></li>
         <li><a href="https://github.com/promethee/at-field/blob/main/INTENT.md">Design record</a></li>
       </ul>
+      <figure class="demo">
+        <img src="demo.svg" width="740" height="351" alt="Terminal replay of at-field on the Gettysburg Address for the theme religion: first with a wordlist, 5 of 12 words found (42%), then with the model's field, 1 of 25 words found (4%).">
+        <figcaption>Replay of two real runs on the Gettysburg Address. The model's wait and the report path are trimmed.</figcaption>
+      </figure>
     </div>
   </header>
 
@@ -196,6 +204,10 @@ hallow     ███████████████ 1</pre>
         <dt>Quality</dt><dd>Unit tests on Node's built-in runner, CI on Node 22 and 24</dd>
         <dt>License</dt><dd>MIT</dd>
       </dl>
+    </section>
+    <section aria-labelledby="performance">
+      <h2 id="performance">Performance</h2>
+      <p>Theme expansion is the slow step, and its speed depends on the hardware running Ollama. Ollama uses a supported GPU automatically, and a GPU is recommended if you run at-field often. On a CPU-only machine, the default 3B model took about 2 to 5 minutes per run in testing. A smaller model (<code>--model qwen2.5:0.5b</code>) runs faster and gives weaker fields outside English. A wordlist (<code>--lexic</code>) skips expansion and answers in seconds.</p>
     </section>
   </main>
 

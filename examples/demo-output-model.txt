@@ -1,0 +1,7 @@
+Expanding theme "religion" into a lexical field (language: en)...
+Notes: plain-text input has no timestamps
+Saturation [█░░░░░░░░░░░░░░░░░░░] 4% (1/25 terms, below the low boundary (10%))
+
+god ██████████████████████████████ 1
+
+Written: examples\gettysburg.religion.1a9e5454.md
