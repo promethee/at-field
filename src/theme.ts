@@ -31,7 +31,7 @@ const OLLAMA_HOST = resolveOllamaHost();
 // Below this term count, the expanded field is flagged as thin (see
 // INTENT.md — likely indicates a narrow subject rather than a broad theme,
 // or a prompt/model limitation). Heuristic, not exact.
-const THIN_FIELD_THRESHOLD = 8;
+export const THIN_FIELD_THRESHOLD = 8;
 
 // Hard ceiling on theme-expansion generation, passed as Ollama's
 // `num_predict`. Real testing of the previous in-process node-llama-cpp
