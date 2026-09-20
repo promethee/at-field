@@ -69,6 +69,7 @@ Accepts `.srt` and `.vtt` (timestamps are kept in the report) or plain text (no 
 | `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
 | `--verbose` | off | Also print the full Markdown report and the long limitation notices. |
 | `--quiet` | off | Print only the report path. Cannot be combined with `--verbose`. |
+| `--version` | off | Print the version and exit. |
 
 Each run writes a Markdown report next to the input transcript.
 
