@@ -48,7 +48,7 @@ test("default output: graphic and report path on stdout, no Markdown dump, a not
   assert.match(r.stdout, /Written: /);
   assert.doesNotMatch(r.stdout, /# Thematic Analysis/);
   assert.match(r.stderr, /Notes: plain-text input has no timestamps/);
-  assert.doesNotMatch(r.stderr, /Transcript quality disclaimer/);
+  assert.doesNotMatch(r.stderr, /Transcript source/);
 });
 
 test("default output prints no notes line when nothing applies", () => {
@@ -66,8 +66,8 @@ test("--verbose also prints the Markdown report and the long notices", () => {
   const r = run(txt, "--theme", "dogs", "--lexic", fullList, "--verbose");
   assert.equal(r.status, 0);
   assert.match(r.stdout, /# Thematic Analysis: "dogs"/);
-  assert.match(r.stderr, /Transcript quality disclaimer/);
-  assert.match(r.stderr, /No-timestamps disclaimer/);
+  assert.match(r.stderr, /Transcript source: user-provided/);
+  assert.match(r.stderr, /No timestamps: plain-text input/);
 });
 
 test("--quiet prints only the report path", () => {
@@ -98,6 +98,13 @@ test("an unreachable Ollama prints one error line and no stack trace", () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /^error: Could not reach a local Ollama server/m);
   assert.doesNotMatch(r.stderr, /\n\s+at /);
+});
+
+test("--version prints the version from package.json", () => {
+  const pkg = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string };
+  const r = run("--version");
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout.trim(), pkg.version);
 });
 
 test("--quiet and --verbose together are rejected", () => {

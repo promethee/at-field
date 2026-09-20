@@ -35,15 +35,22 @@ interface CliArgs {
   verbose?: boolean;
 }
 
+// package.json sits one level above both src/ and dist/, so this resolves the
+// same way from the source tree and from an installed package.
+const { version } = JSON.parse(
+  fs.readFileSync(new URL("../package.json", import.meta.url), "utf-8"),
+) as { version: string };
+
 const program = new Command();
 
 program
   .name("at-field")
   .description("Text-in, theme-crossed lexical field analysis out.")
+  .version(version, "-V, --version", "print the version")
   .argument("<transcript>", "path to a transcript file (.srt, .vtt, or plain text)")
   .option("--theme <value>", "theme to expand into a lexical field")
   .option("--lexic <path>", "static wordlist file, overrides dynamic theme expansion")
-  .option("--language <code>", "transcript's language, e.g. en, fr -- auto-detected from the transcript if omitted")
+  .option("--language <code>", "transcript's language, e.g. en, fr (auto-detected from the transcript if omitted)")
   .option("--model <name>", "Ollama model used for theme expansion (default: qwen2.5:3b)")
   .option(
     "--field-size <n>",
@@ -152,13 +159,13 @@ program
     const effectiveLanguage = options.language ?? transcript.language;
 
     detail(
-      `Transcript quality disclaimer: user-provided transcript (language: ${effectiveLanguage}) — accuracy ` +
-        `depends on whatever tool produced it, not on at-field.`,
+      `Transcript source: user-provided (language: ${effectiveLanguage}). Accuracy depends on the tool that ` +
+        `produced the transcript.`,
     );
     if (transcript.segments.length === 0) {
       detail(
-        `No-timestamps disclaimer: plain-text input has no segment timing -- timestamped occurrences will be ` +
-          `empty in this report. Use .srt/.vtt input to keep them.`,
+        `No timestamps: plain-text input has no segment timing, so timestamped occurrences will be empty in ` +
+          `this report. Use .srt/.vtt input to keep them.`,
       );
     }
 
@@ -184,8 +191,8 @@ program
 
     if (field.isThin) {
       detail(
-        `Thin-field disclaimer: only ${field.terms.length} term(s) found for "${field.theme}" ` +
-          `(threshold: ${THIN_FIELD_THRESHOLD}). Results may resemble keyword-spotting rather than a broad ` +
+        `Thin field: only ${field.terms.length} term(s) found for "${field.theme}" ` +
+          `(threshold: ${THIN_FIELD_THRESHOLD}). Results may read more like keyword spotting than a broad ` +
           `thematic analysis.`,
       );
     }

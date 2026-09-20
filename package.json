@@ -1,6 +1,6 @@
 {
   "name": "at-field",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Text-in, theme-crossed lexical field analysis out.",
   "keywords": [
     "transcript",
@@ -19,14 +19,14 @@
   "bugs": {
     "url": "https://github.com/promethee/at-field/issues"
   },
-  "homepage": "https://github.com/promethee/at-field#readme",
+  "homepage": "https://promethee.github.io/at-field/",
   "license": "MIT",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "bin": {
-    "at-field": "./dist/cli.js"
+    "at-field": "dist/cli.js"
   },
   "files": [
     "dist"

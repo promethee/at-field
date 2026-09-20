@@ -66,7 +66,7 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
 
   lines.push("## Disclaimers", "");
   lines.push(
-    `- Transcript source: user-provided (language: \`${transcript.language}\`) — accuracy depends on whatever tool produced this transcript, not on at-field.`,
+    `- Transcript source: user-provided (language: \`${transcript.language}\`). Accuracy depends on the tool that produced the transcript.`,
   );
   if (transcript.segments.length === 0) {
     lines.push(
@@ -75,7 +75,7 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
   }
   if (field.isThin) {
     lines.push(
-      `- Thin field: only ${field.terms.length} term(s) found for "${field.theme}" (threshold: 8). Results may resemble keyword-spotting rather than a broad thematic analysis.`,
+      `- Thin field: only ${field.terms.length} term(s) found for "${field.theme}" (threshold: 8). Results may read more like keyword spotting than a broad thematic analysis.`,
     );
   }
   if (field.stemLength === 0) {
