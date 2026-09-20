@@ -12,6 +12,10 @@
     "ollama",
     "cli"
   ],
+  "author": {
+    "name": "François Chateau",
+    "url": "https://github.com/promethee"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/promethee/at-field.git"
