@@ -30,7 +30,14 @@ before(() => {
 after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
 function run(...args: string[]) {
-  const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], { encoding: "utf8" });
+  return runWithEnv({}, ...args);
+}
+
+function runWithEnv(env: Record<string, string>, ...args: string[]) {
+  const r = spawnSync(process.execPath, ["--import", "tsx", CLI, ...args], {
+    encoding: "utf8",
+    env: { ...process.env, ...env },
+  });
   return { status: r.status, stdout: r.stdout, stderr: r.stderr };
 }
 
@@ -83,6 +90,14 @@ test("--stem-length cannot be combined with --lexic", () => {
   const r = run(srt, "--theme", "dogs", "--lexic", fullList, "--stem-length", "5");
   assert.notEqual(r.status, 0);
   assert.match(r.stderr, /cannot be combined with --lexic/);
+});
+
+test("an unreachable Ollama prints one error line and no stack trace", () => {
+  // Port 1 refuses connections, so this holds with or without Ollama installed.
+  const r = runWithEnv({ OLLAMA_HOST: "127.0.0.1:1" }, srt, "--theme", "dogs");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /^error: Could not reach a local Ollama server/m);
+  assert.doesNotMatch(r.stderr, /\n\s+at /);
 });
 
 test("--quiet and --verbose together are rejected", () => {

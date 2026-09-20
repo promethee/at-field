@@ -2,12 +2,15 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { confirm } from "./confirm.js";
 import { DEFAULT_STEM_LENGTH, foldWord, shareStem } from "./stems.js";
+import { fetchModelSize, formatSize } from "./registry.js";
 import type { LexicalFieldResult } from "./types.js";
 
 // 3B: real French testing showed sub-1B models (qwen2.5:0.5b, minicpm-v4.6)
-// return junk terms and score 0; qwen2.5:3b gave usable fields. ~1.9 GB.
+// return junk terms and score 0; qwen2.5:3b gave usable fields. The README and
+// the page state its download size (about 1.9 GB); the monthly model check
+// (scripts/check-default-model.mjs) flags it if that drifts.
 // Pulled and run by the user's own local Ollama install -- see README.
-const DEFAULT_MODEL = "qwen2.5:3b";
+export const DEFAULT_MODEL = "qwen2.5:3b";
 
 // OLLAMA_HOST is Ollama's own env var convention, but its value isn't
 // guaranteed to be a full URL -- e.g. found set to bare "0.0.0.0" (no
@@ -83,10 +86,22 @@ function fieldSchema(maxItems: number) {
  * failure mode: server unreachable, user declines, or the pull itself
  * fails (e.g. `ollama` not on PATH).
  */
-export async function ensureModelPulled(
-  model: string,
-  deps: { confirm: typeof confirm; pullModel: (model: string) => Promise<void> } = { confirm, pullModel },
-): Promise<void> {
+interface PullDeps {
+  confirm: typeof confirm;
+  pullModel: (model: string) => Promise<void>;
+  /** false for scripts and CI: no download starts without a person to ask */
+  interactive: boolean;
+  modelSize: (model: string) => Promise<number | null>;
+}
+
+export async function ensureModelPulled(model: string, overrides: Partial<PullDeps> = {}): Promise<void> {
+  const deps: PullDeps = {
+    confirm,
+    pullModel,
+    interactive: Boolean(process.stdin.isTTY),
+    modelSize: fetchModelSize,
+    ...overrides,
+  };
   let res: Response;
   try {
     res = await fetch(`${OLLAMA_HOST}/api/tags`);
@@ -107,7 +122,19 @@ export async function ensureModelPulled(
     return;
   }
 
-  const proceed = await deps.confirm(`Model "${model}" isn't pulled in Ollama yet. Pull it now?`, true);
+  if (!deps.interactive) {
+    throw new Error(
+      `Model "${model}" isn't pulled in Ollama yet, and a non-interactive run does not start downloads. ` +
+        `Run: ollama pull ${model}`,
+    );
+  }
+
+  const bytes = await deps.modelSize(model);
+  const download = bytes === null ? "it" : formatSize(bytes);
+  const proceed = await deps.confirm(
+    `Model "${model}" isn't pulled in Ollama yet. Pulling downloads ${download} from ollama.com, once. Pull it now?`,
+    true,
+  );
   if (!proceed) {
     throw new Error(`Aborted: run \`ollama pull ${model}\` yourself, then retry.`);
   }

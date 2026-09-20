@@ -218,4 +218,9 @@ program
     console.log(`\nWritten: ${outputPaths.reportPath}`);
   });
 
-program.parseAsync(process.argv);
+// Expected failures (Ollama unreachable, a model that is missing in a
+// non-interactive run, an unreadable file) print one line instead of a stack.
+program.parseAsync(process.argv).catch((err: unknown) => {
+  console.error(`error: ${err instanceof Error ? err.message : String(err)}`);
+  process.exitCode = 1;
+});

@@ -79,10 +79,13 @@ test("ensureModelPulled treats a bare model name as :latest", async () => {
   await ensureModelPulled("mistral", { confirm: neverConfirm, pullModel: neverPull });
 });
 
+const interactive = { interactive: true, modelSize: async () => null };
+
 test("ensureModelPulled does not treat a different tag as a match", async () => {
   stubFetch(() => tags("qwen2.5:0.5b"));
   const pulled: string[] = [];
   await ensureModelPulled("qwen2.5:3b", {
+    ...interactive,
     confirm: async () => true,
     pullModel: async (m) => void pulled.push(m),
   });
@@ -94,6 +97,7 @@ test("ensureModelPulled pulls the model when it is missing and the user accepts"
   const asked: string[] = [];
   const pulled: string[] = [];
   await ensureModelPulled("qwen2.5:3b", {
+    ...interactive,
     confirm: async (message, defaultYes) => {
       asked.push(message);
       assert.equal(defaultYes, true);
@@ -106,10 +110,47 @@ test("ensureModelPulled pulls the model when it is missing and the user accepts"
   assert.deepEqual(pulled, ["qwen2.5:3b"]);
 });
 
+test("ensureModelPulled tells the user how big the download is", async () => {
+  stubFetch(() => tags());
+  const asked: string[] = [];
+  await ensureModelPulled("qwen2.5:3b", {
+    interactive: true,
+    modelSize: async () => 1_930_000_000,
+    confirm: async (message) => {
+      asked.push(message);
+      return true;
+    },
+    pullModel: async () => {},
+  });
+  assert.match(asked[0], /Pulling downloads about 1\.9 GB from ollama\.com, once\. Pull it now\?/);
+});
+
+test("ensureModelPulled asks without a size when the lookup fails", async () => {
+  stubFetch(() => tags());
+  const asked: string[] = [];
+  await ensureModelPulled("qwen2.5:3b", {
+    ...interactive,
+    confirm: async (message) => {
+      asked.push(message);
+      return true;
+    },
+    pullModel: async () => {},
+  });
+  assert.match(asked[0], /Pulling downloads it from ollama\.com, once\./);
+});
+
+test("ensureModelPulled refuses to start a download in a non-interactive run", async () => {
+  stubFetch(() => tags());
+  await assert.rejects(
+    () => ensureModelPulled("qwen2.5:3b", { interactive: false, confirm: neverConfirm, pullModel: neverPull }),
+    /non-interactive run does not start downloads\. Run: ollama pull qwen2\.5:3b/,
+  );
+});
+
 test("ensureModelPulled aborts without pulling when the user declines", async () => {
   stubFetch(() => tags());
   await assert.rejects(
-    () => ensureModelPulled("qwen2.5:3b", { confirm: async () => false, pullModel: neverPull }),
+    () => ensureModelPulled("qwen2.5:3b", { ...interactive, confirm: async () => false, pullModel: neverPull }),
     /Aborted: run `ollama pull qwen2\.5:3b`/,
   );
 });
@@ -119,6 +160,7 @@ test("ensureModelPulled propagates a failed pull", async () => {
   await assert.rejects(
     () =>
       ensureModelPulled("qwen2.5:3b", {
+        ...interactive,
         confirm: async () => true,
         pullModel: async () => {
           throw new Error("pull failed");
