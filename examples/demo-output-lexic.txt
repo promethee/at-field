@@ -7,4 +7,4 @@ god        ███████████████ 1
 consecrate ███████████████ 1
 hallow     ███████████████ 1
 
-Written: examples\gettysburg.religion.b12a7927.md
+Written: examples\gettysburg.religion.b2f750f6.md

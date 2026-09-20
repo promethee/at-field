@@ -48,6 +48,7 @@ Accepts `.srt` and `.vtt` (timestamps are kept in the report) or plain text (no 
 | `--language <code>` | detected from the transcript | Transcript's language, for example `en` or `fr`. The lexical field is written in this language. |
 | `--model <name>` | `qwen2.5:3b` | Ollama model for theme expansion. Offers to `ollama pull` it when missing. Smaller models such as `qwen2.5:0.5b` run faster and give weaker fields outside English. Larger ones such as `mistral` may do better in French. |
 | `--field-size <n>` | `25` | How many words to keep when the model expands the theme (5 to 100). Raise it for long transcripts. Cannot be combined with `--lexic`. |
+| `--stem-length <n>` | `5` | Leading letters that identify a word's stem, from 3 to 12, or 0 to turn stem filtering off. Words sharing a stem count as one word ("voyage" and "voyageur"), and words sharing a stem with the theme are dropped ("economic" for "economy"). Lower it to merge more forms, raise it to merge fewer. Cannot be combined with `--lexic`. |
 | `--saturation-low <pct>` | `10` | Low boundary for the saturation score, in percent. |
 | `--saturation-high <pct>` | `70` | High boundary for the saturation score, in percent. |
 | `--verbose` | off | Also print the full Markdown report and the long limitation notices. |
