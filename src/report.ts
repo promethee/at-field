@@ -1,4 +1,5 @@
 import type { AnalysisResult } from "./types.js";
+import { DEFAULT_STEM_LENGTH } from "./stems.js";
 
 // Arbitrary, disclosed defaults (percent). Meant to be overridden by users
 // who know their material -- see INTENT.md. Low: below it a theme is barely
@@ -75,6 +76,15 @@ export function renderMarkdown(result: AnalysisResult, options: RenderOptions = 
   if (field.isThin) {
     lines.push(
       `- Thin field: only ${field.terms.length} term(s) found for "${field.theme}" (threshold: 8). Results may resemble keyword-spotting rather than a broad thematic analysis.`,
+    );
+  }
+  if (field.stemLength === 0) {
+    lines.push(
+      `- Stem filtering off (--stem-length 0): words sharing a stem with the theme, such as an inflected form of a theme word, stay in the field, so hits on them partly restate the theme, and forms of one word count separately.`,
+    );
+  } else if (field.stemLength !== undefined && field.stemLength !== DEFAULT_STEM_LENGTH) {
+    lines.push(
+      `- Stem length ${field.stemLength} (default ${DEFAULT_STEM_LENGTH}): words sharing their first ${field.stemLength} letters count as forms of one word, and words sharing them with the theme are dropped.`,
     );
   }
   lines.push("");

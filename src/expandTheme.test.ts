@@ -175,6 +175,20 @@ test("expandTheme sends a fixed seed and leaves temperature at the model default
   assert.equal("temperature" in options, false);
 });
 
+test("expandTheme drops the theme's word family by default and records the stem length", async () => {
+  stubFetch(ollamaOk({ terms: ["economic", "budget", "economist", "tax"] }));
+  const field = await expandTheme("economy");
+  assert.deepEqual(field.terms, ["budget", "tax"]);
+  assert.equal(field.stemLength, 5);
+});
+
+test("expandTheme keeps the theme's word family when the stem length is 0", async () => {
+  stubFetch(ollamaOk({ terms: ["economic", "budget", "economist", "tax"] }));
+  const field = await expandTheme("economy", { stemLength: 0 });
+  assert.deepEqual(field.terms, ["economic", "budget", "economist", "tax"]);
+  assert.equal(field.stemLength, 0);
+});
+
 test("expandTheme tells the model to answer in the transcript's language", async () => {
   const calls = stubFetch(ollamaOk({ terms: ["a1"] }));
   await expandTheme("économie", { language: "fr" });

@@ -59,6 +59,30 @@ test("cleanExpandedTerms still dedupes short exact duplicates", () => {
   assert.deepEqual(cleanExpandedTerms(["art", "Art", "ART"]), ["art"]);
 });
 
+test("cleanExpandedTerms drops words sharing a stem with the theme", () => {
+  assert.deepEqual(cleanExpandedTerms(["religionist", "religious", "god", "church"], "religion"), ["god", "church"]);
+});
+
+test("cleanExpandedTerms treats every content word of a multi-word theme as a stem", () => {
+  assert.deepEqual(
+    cleanExpandedTerms(["economic", "policy", "politician", "tax"], "economy and politics"),
+    ["policy", "tax"],
+  );
+});
+
+test("cleanExpandedTerms keeps theme-family words when the stem length is 0", () => {
+  const terms = ["religionist", "religious", "god", "church"];
+  assert.deepEqual(cleanExpandedTerms(terms, "religion", 0), terms);
+});
+
+test("cleanExpandedTerms leaves themes shorter than the stem length with the exact rule only", () => {
+  assert.deepEqual(cleanExpandedTerms(["warlord", "warfare", "war", "battle"], "war"), ["warlord", "warfare", "battle"]);
+});
+
+test("cleanExpandedTerms with a shorter stem length also merges variants of short roots", () => {
+  assert.deepEqual(cleanExpandedTerms(["art", "artistes", "jeu", "jeune"], "", 3), ["art", "jeu"]);
+});
+
 test("cleanExpandedTerms trims and drops empty entries", () => {
   assert.deepEqual(cleanExpandedTerms(["  paw ", "", "   "]), ["paw"]);
 });

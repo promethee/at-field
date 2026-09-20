@@ -12,6 +12,7 @@ import {
   THIN_FIELD_THRESHOLD,
 } from "./theme.js";
 import { resolveVerbosity, shortNotes, formatNotes, type Verbosity } from "./notes.js";
+import { DEFAULT_STEM_LENGTH, parseStemLength } from "./stems.js";
 import { analyze } from "./analyze.js";
 import {
   renderMarkdown,
@@ -27,6 +28,7 @@ interface CliArgs {
   language?: string;
   model?: string;
   fieldSize?: string;
+  stemLength?: string;
   saturationLow: string;
   saturationHigh: string;
   quiet?: boolean;
@@ -46,6 +48,11 @@ program
   .option(
     "--field-size <n>",
     `number of words to keep when the model expands the theme (default: ${DEFAULT_FIELD_SIZE}); not usable with --lexic`,
+  )
+  .option(
+    "--stem-length <n>",
+    `leading letters that identify a word's stem (default: ${DEFAULT_STEM_LENGTH}, 0 turns stem filtering off); ` +
+      `words sharing a stem count as one word, and words sharing one with the theme are dropped; not usable with --lexic`,
   )
   .option(
     "--saturation-low <pct>",
@@ -96,6 +103,19 @@ program
     let fieldSize: number | undefined;
     try {
       fieldSize = parseFieldSize(opts.fieldSize);
+    } catch (err) {
+      program.error(`error: ${(err as Error).message}`);
+    }
+
+    if (opts.stemLength !== undefined && opts.lexic) {
+      program.error(
+        "error: --stem-length filters the words the model proposes, so it cannot be combined with --lexic " +
+          "(your wordlist is used as written)",
+      );
+    }
+    let stemLength: number | undefined;
+    try {
+      stemLength = parseStemLength(opts.stemLength);
     } catch (err) {
       program.error(`error: ${(err as Error).message}`);
     }
@@ -159,6 +179,7 @@ program
           language: effectiveLanguage !== "unknown" ? effectiveLanguage : undefined,
           model: opts.model,
           size: fieldSize,
+          stemLength,
         });
 
     if (field.isThin) {

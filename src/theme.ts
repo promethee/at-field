@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import { confirm } from "./confirm.js";
+import { DEFAULT_STEM_LENGTH, foldWord, shareStem } from "./stems.js";
 import type { LexicalFieldResult } from "./types.js";
 
 // 3B: real French testing showed sub-1B models (qwen2.5:0.5b, minicpm-v4.6)
@@ -185,7 +186,7 @@ async function readGenerateStream(res: Response): Promise<string> {
  */
 export async function expandTheme(
   theme: string,
-  options: { language?: string; model?: string; size?: number } = {},
+  options: { language?: string; model?: string; size?: number; stemLength?: number } = {},
 ): Promise<LexicalFieldResult> {
   const model = options.model ?? DEFAULT_MODEL;
   await ensureModelPulled(model);
@@ -263,29 +264,15 @@ export async function expandTheme(
         `finishing). Try a narrower theme, or retry.`,
     );
   }
-  const terms = cleanExpandedTerms(parsed.terms, theme).slice(0, size);
+  const stemLength = options.stemLength ?? DEFAULT_STEM_LENGTH;
+  const terms = cleanExpandedTerms(parsed.terms, theme, stemLength).slice(0, size);
 
   return {
     theme,
     terms,
     isThin: terms.length < THIN_FIELD_THRESHOLD,
+    stemLength,
   };
-}
-
-// A term sharing this many leading letters with an already-kept term is
-// treated as a variant of it (inflection/derivation) and dropped. Deliberately
-// conservative: real French output padded a field with lecture/lectrices,
-// voyage/voyageur/voyageuse, photographie/photographe/photographique, which
-// inflates the field size and deflates saturation. 5 avoids most false merges
-// of distinct short roots (jeu/jeune, parc/parce, art/article, chat/chateau)
-// at the cost of missing variants of short roots (art/artistes,
-// lecture/lecteur). Known false merge at 5: marché/marchandise. See INTENT.md.
-const MIN_SHARED_PREFIX = 5;
-
-function sharedPrefixLength(a: string, b: string): number {
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return i;
 }
 
 /**
@@ -296,26 +283,32 @@ function sharedPrefixLength(a: string, b: string): number {
  * phrases like "croissance du secteur du travail") that this is enforced
  * here rather than trusted to the prompt. Also drops:
  * - exact duplicates, case- and accent-insensitively;
- * - variants of an already-kept term (see MIN_SHARED_PREFIX), keeping the
- *   first one the model listed -- so the field measures breadth, not one
- *   root repeated in many forms;
- * - the theme's own words: a hit on the theme's own vocabulary would inflate
- *   saturation with evidence the theme already implies (circular -- see
- *   INTENT.md).
+ * - the theme's own words, exactly: a hit on the theme's own vocabulary would
+ *   inflate saturation with evidence the theme already implies (circular --
+ *   see INTENT.md);
+ * - words sharing a stem (`stemLength` leading letters, see stems.ts) with the
+ *   theme's words ("economic" for "economy") or with a word already kept
+ *   ("voyageur" after "voyage"), keeping the first one the model listed, so
+ *   the field measures breadth and not one root in many forms. A stem length
+ *   of 0 turns the stem rules off and leaves only the exact ones.
  * Dynamic expansion only -- --lexic lists are the user's own and left
  * untouched.
  */
-export function cleanExpandedTerms(raw: string[], theme = ""): string[] {
-  const fold = (s: string) => s.normalize("NFD").replace(/\p{M}+/gu, "").toLowerCase();
-  const themeWords = new Set(fold(theme).split(/[^\p{L}\p{N}]+/u).filter(Boolean));
-  const keptKeys: string[] = [];
+export function cleanExpandedTerms(
+  raw: string[],
+  theme = "",
+  stemLength: number = DEFAULT_STEM_LENGTH,
+): string[] {
+  const themeWords = foldWord(theme).split(/[^\p{L}\p{N}]+/u).filter(Boolean);
+  // The theme's words start out as already-kept words, so the same stem rule
+  // covers the theme's own family. They are not added to the output.
+  const keptKeys: string[] = [...themeWords];
   const out: string[] = [];
   for (const t of raw) {
     const term = t.trim();
     if (!term || /\s/.test(term)) continue;
-    const key = fold(term);
-    if (themeWords.has(key)) continue;
-    if (keptKeys.some((k) => k === key || sharedPrefixLength(k, key) >= MIN_SHARED_PREFIX)) continue;
+    const key = foldWord(term);
+    if (keptKeys.some((k) => shareStem(k, key, stemLength))) continue;
     keptKeys.push(key);
     out.push(term);
   }

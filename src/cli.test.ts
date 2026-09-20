@@ -73,6 +73,18 @@ test("--quiet prints only the report path", () => {
   assert.equal(r.stderr, "");
 });
 
+test("--stem-length rejects an out-of-range value", () => {
+  const r = run(srt, "--theme", "dogs", "--stem-length", "2");
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /--stem-length must be 0 \(off\) or a whole number from 3 to 12/);
+});
+
+test("--stem-length cannot be combined with --lexic", () => {
+  const r = run(srt, "--theme", "dogs", "--lexic", fullList, "--stem-length", "5");
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /cannot be combined with --lexic/);
+});
+
 test("--quiet and --verbose together are rejected", () => {
   const r = run(srt, "--theme", "dogs", "--lexic", fullList, "--quiet", "--verbose");
   assert.notEqual(r.status, 0);

@@ -25,6 +25,8 @@ export interface LexicalFieldResult {
   terms: string[];
   /** true if the expanded field is unusually small (see thin-field disclosure) */
   isThin: boolean;
+  /** stem length the expansion filters used; undefined for a --lexic wordlist */
+  stemLength?: number;
 }
 
 export interface SegmentHit {

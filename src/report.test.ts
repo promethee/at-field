@@ -65,6 +65,23 @@ test("renderMarkdown includes a thin-field disclaimer only when isThin is true",
   assert.doesNotMatch(notThin, /Thin field/);
 });
 
+test("renderMarkdown discloses when stem filtering is off", () => {
+  const md = renderMarkdown(baseResult({ field: { theme: "dogs", terms: ["paw"], isThin: false, stemLength: 0 } }));
+  assert.match(md, /Stem filtering off \(--stem-length 0\)/);
+});
+
+test("renderMarkdown discloses a non-default stem length", () => {
+  const md = renderMarkdown(baseResult({ field: { theme: "dogs", terms: ["paw"], isThin: false, stemLength: 4 } }));
+  assert.match(md, /Stem length 4 \(default 5\)/);
+});
+
+test("renderMarkdown says nothing about stems at the default length or for a wordlist", () => {
+  const atDefault = renderMarkdown(baseResult({ field: { theme: "dogs", terms: ["paw"], isThin: false, stemLength: 5 } }));
+  const wordlist = renderMarkdown(baseResult());
+  assert.doesNotMatch(atDefault, /Stem/);
+  assert.doesNotMatch(wordlist, /Stem/);
+});
+
 test("renderMarkdown lists matches in a table", () => {
   const md = renderMarkdown(baseResult());
   assert.match(md, /\| paw \| 3 \|/);
