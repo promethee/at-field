@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-09-20)
+
+- Added the package `author`, so the npm page shows it. Updated the license holder.
+
 ## 0.1.1 (2026-09-20)
 
 - Added `--version` (`-V`).
