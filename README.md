@@ -24,6 +24,22 @@ Requires Node.js 22+ and [Ollama](https://ollama.com) running locally. Ollama ex
 
 ```bash
 ollama pull qwen2.5:3b
+npm install -g at-field
+```
+
+The default model is about 1.9 GB and downloads once. If it is missing, at-field shows its size and offers to pull it. A run with no terminal (a script or CI job) starts no download and prints the `ollama pull` command instead.
+
+To try it without installing, run it through `npx`:
+
+```bash
+npx at-field transcript.srt --theme "economy"
+```
+
+`npx` fetches the package on first use, so the first start takes longer. Set up Ollama and pull the model first, because `npx` fetches only at-field.
+
+To run from source instead:
+
+```bash
 git clone https://github.com/promethee/at-field.git
 cd at-field
 npm install

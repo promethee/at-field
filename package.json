@@ -41,7 +41,8 @@
     "test:watch": "node --import tsx --test --watch src/*.test.ts",
     "check:pack": "node scripts/check-pack.mjs",
     "prepack": "npm run build",
-    "prepublishOnly": "npm run typecheck && npm test && npm run check:pack"
+    "prepublishOnly": "npm run typecheck && npm test && npm run check:pack",
+    "check:model": "node --import tsx scripts/check-default-model.mjs"
   },
   "dependencies": {
     "commander": "^12.1.0",

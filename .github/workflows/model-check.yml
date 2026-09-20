@@ -1,0 +1,21 @@
+name: Model check
+
+# Runs on the 1st of each month, and on demand. It checks that the default
+# Ollama model still exists on the registry and that its documented download
+# size is still right. A failure notifies the repo owner.
+on:
+  schedule:
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check:model

@@ -195,6 +195,15 @@ hallow     ███████████████ 1</pre>
       </ul>
     </section>
 
+    <section aria-labelledby="install">
+      <h2 id="install">Install</h2>
+      <p>Install <a href="https://ollama.com/download">Ollama</a> and pull the default model, then install at-field with npm.</p>
+      <pre class="term" tabindex="0">$ ollama pull qwen2.5:3b
+$ npm install -g at-field</pre>
+      <p>The default model is about 1.9 GB and downloads once. If it is missing, at-field shows its size and offers to pull it. A run with no terminal (a script or CI job) starts no download and prints the <code>ollama pull</code> command instead.</p>
+      <p>To try it without installing, run <code>npx at-field transcript.srt --theme "economy"</code>. <code>npx</code> fetches the package on first use, so the first start takes longer. Set up Ollama and the model beforehand, because <code>npx</code> fetches only at-field.</p>
+    </section>
+
     <section aria-labelledby="stack">
       <h2 id="stack">Under the hood</h2>
       <dl class="stack">
